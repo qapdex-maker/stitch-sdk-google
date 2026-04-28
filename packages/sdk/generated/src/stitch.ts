@@ -3,12 +3,12 @@
 DO NOT EDIT — changes will be overwritten.
 
 Source: tools-manifest.json (sha256:2f1a623ec115...)
-        domain-map.json     (sha256:376520bcbc85...)
-Generated: 2026-04-03T00:43:46.581Z
+        domain-map.json     (sha256:baa17d36f4c1...)
+Generated: 2026-04-28T16:31:23.449Z
  */
 import { type StitchToolClient } from "../../src/client.js";
 import { StitchError } from "../../src/spec/errors.js";
-import { Project } from "./project.js";
+import { Project } from "../../src/project-ext.js";
 
 /** Main entry point. Manages projects. */
 export class Stitch {
