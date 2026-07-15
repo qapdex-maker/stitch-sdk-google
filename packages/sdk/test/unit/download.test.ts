@@ -86,6 +86,60 @@ describe("DownloadAssetsHandler", () => {
     );
   });
 
+  it("automatically appends empty alt attributes if missing, and preserves existing ones", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () =>
+            Promise.resolve(
+              '<html><body><img src="http://example.com/img1.png"><img src="http://example.com/img2.png" alt="Existing Alt"></body></html>',
+            ),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    // Find the call to write code.html
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("<img"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    // The first img should have got alt="" added
+    expect(writtenHtml).toContain('alt=""');
+    // The second img should have preserved its original alt attribute
+    expect(writtenHtml).toContain('alt="Existing Alt"');
+  });
+
   it("prevents directory traversal", async () => {
     const fs = await import("node:fs/promises");
     const path = await import("node:path");
