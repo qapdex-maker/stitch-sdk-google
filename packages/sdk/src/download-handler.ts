@@ -112,6 +112,16 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         const html = await fetch(htmlUrl).then((r) => r.text());
         const $ = cheerio.load(html);
 
+        // Ensure all img tags have an alt attribute for accessibility.
+        // If an img tag is missing the alt attribute entirely, screen readers will read
+        // out the raw filename (which after rewriting is a cryptic hash like "banner-a1b2c3d4.png").
+        // Setting an empty alt="" tells screen readers to gracefully ignore decorative images.
+        $("img").each((_, el) => {
+          if ($(el).attr("alt") === undefined) {
+            $(el).attr("alt", "");
+          }
+        });
+
         const assetTasks: (() => Promise<void>)[] = [];
 
         $("img").each((_, el) => {
