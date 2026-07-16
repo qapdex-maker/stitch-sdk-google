@@ -24,6 +24,8 @@
  * parseResourceName("abc123")                   // → "abc123" (pass-through)
  */
 export function parseResourceName(name: string): string {
-  if (!name || !name.includes("/")) return name;
-  return name.split("/").pop()!;
+  if (!name) return name;
+  const lastSlashIndex = name.lastIndexOf("/");
+  if (lastSlashIndex === -1) return name;
+  return name.substring(lastSlashIndex + 1);
 }

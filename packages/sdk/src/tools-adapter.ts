@@ -50,9 +50,12 @@ export function stitchTools(options?: {
 }): Record<string, Tool> {
   const client = getOrCreateClient(options);
 
-  const filtered = options?.include
-    ? toolDefinitions.filter((t) => options.include!.includes(t.name))
-    : toolDefinitions;
+  // OPTIMIZATION: Convert the inclusion array into a Set to reduce lookup complexity from O(M) to O(1) per tool.
+  let filtered = toolDefinitions;
+  if (options?.include) {
+    const includeSet = new Set(options.include);
+    filtered = toolDefinitions.filter((t) => includeSet.has(t.name));
+  }
 
   return Object.fromEntries(
     filtered.map((t) => [

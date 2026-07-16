@@ -111,9 +111,12 @@ export function stitchAdkTools(options?: {
 }): FunctionTool<Schema>[] {
   const client = getOrCreateClient(options);
 
-  const filtered = options?.include
-    ? toolDefinitions.filter((t) => options.include!.includes(t.name))
-    : toolDefinitions;
+  // OPTIMIZATION: Convert the inclusion array into a Set to reduce lookup complexity from O(M) to O(1) per tool.
+  let filtered = toolDefinitions;
+  if (options?.include) {
+    const includeSet = new Set(options.include);
+    filtered = toolDefinitions.filter((t) => includeSet.has(t.name));
+  }
 
   return filtered.map(
     (t) =>
