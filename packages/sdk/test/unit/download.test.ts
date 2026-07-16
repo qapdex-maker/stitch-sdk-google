@@ -140,6 +140,78 @@ describe("DownloadAssetsHandler", () => {
     expect(writtenHtml).toContain('alt="Existing Alt"');
   });
 
+  it("automatically enhances interactive element labels and decorative SVGs for accessibility", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<button id="btn1" title="Close Settings"><svg id="svg1"></svg></button>' +
+      '<a id="link1" title="Home Link" aria-label="Go Home"><svg id="svg2"></svg></a>' +
+      '<button id="btn2">No title but has text <svg id="svg3"></svg></button>' +
+      '<button id="btn3" aria-label="Has label"><svg id="svg4" aria-hidden="false"></svg></button>' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    // Find the call to write code.html
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("button"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    // Check Button 1: title should populate aria-label, svg1 should get aria-hidden="true"
+    expect(writtenHtml).toContain(
+      'id="btn1" title="Close Settings" aria-label="Close Settings"',
+    );
+    expect(writtenHtml).toContain('id="svg1" aria-hidden="true"');
+
+    // Check Link 1: existing aria-label "Go Home" should be preserved (not overridden by title)
+    expect(writtenHtml).toContain(
+      'id="link1" title="Home Link" aria-label="Go Home"',
+    );
+    expect(writtenHtml).toContain('id="svg2" aria-hidden="true"');
+
+    // Check Button 2: text content triggers aria-hidden on svg3
+    expect(writtenHtml).toContain('id="svg3" aria-hidden="true"');
+
+    // Check Button 3: svg4 already has aria-hidden="false", should not be overridden
+    expect(writtenHtml).toContain('id="svg4" aria-hidden="false"');
+  });
+
   it("prevents directory traversal", async () => {
     const fs = await import("node:fs/promises");
     const path = await import("node:path");

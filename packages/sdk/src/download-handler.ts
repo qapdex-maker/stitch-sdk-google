@@ -122,6 +122,36 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           }
         });
 
+        // 1. Interactive Elements Accessibility: If a button or link has a `title` attribute
+        // but lacks an `aria-label`, populate `aria-label` with the `title` text. This ensures
+        // screen readers read a descriptive label instead of silence or cryptic child elements.
+        $("button, a").each((_, el) => {
+          const title = $(el).attr("title");
+          const ariaLabel = $(el).attr("aria-label");
+          if (title && !ariaLabel) {
+            $(el).attr("aria-label", title);
+          }
+        });
+
+        // 2. Decorative Icon Accessibility: Mark SVGs inside interactive elements (buttons/links)
+        // that already have an accessible label (has an `aria-label` or non-empty text content)
+        // with `aria-hidden="true"`. This prevents screen readers from redundantly announcing
+        // raw SVG paths or graphics when a meaningful label is already present.
+        $("button, a").each((_, parentEl) => {
+          const hasLabel =
+            $(parentEl).attr("aria-label") ||
+            $(parentEl).text().trim().length > 0;
+          if (hasLabel) {
+            $(parentEl)
+              .find("svg")
+              .each((_, svgEl) => {
+                if ($(svgEl).attr("aria-hidden") === undefined) {
+                  $(svgEl).attr("aria-hidden", "true");
+                }
+              });
+          }
+        });
+
         const assetTasks: (() => Promise<void>)[] = [];
 
         $("img").each((_, el) => {
