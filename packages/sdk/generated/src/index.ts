@@ -4,12 +4,17 @@ DO NOT EDIT — changes will be overwritten.
 
 Source: tools-manifest.json (sha256:f20f91d571a1...)
         domain-map.json     (sha256:715639788724...)
-Generated: 2026-07-15T23:59:08.623Z
+Generated: 2026-07-17T00:22:54.538Z
  */
 export { Stitch } from "./stitch.js";
 export { Project } from "./project.js";
 export { Screen } from "./screen.js";
 export { DesignSystem } from "./designsystem.js";
-export { toolDefinitions, type ToolDefinition, type ToolInputSchema, type ToolPropertySchema } from "./tool-definitions.js";
+export {
+  toolDefinitions,
+  type ToolDefinition,
+  type ToolInputSchema,
+  type ToolPropertySchema,
+} from "./tool-definitions.js";
 export type * from "./types.generated.js";
 export type * from "./responses.generated.js";

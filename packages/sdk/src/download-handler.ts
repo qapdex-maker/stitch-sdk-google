@@ -152,6 +152,38 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           }
         });
 
+        // 3. Form Input Accessibility: Automatically label form controls (input, textarea, select)
+        // that lack an accessible name (aria-label, aria-labelledby, or an associated label element),
+        // using their placeholder or title attribute.
+        $("input, textarea, select").each((_, el) => {
+          const id = $(el).attr("id");
+          const hasAriaLabel = $(el).attr("aria-label") !== undefined;
+          const hasAriaLabelledBy = $(el).attr("aria-labelledby") !== undefined;
+          const hasLabelAncestor = $(el).closest("label").length > 0;
+          const hasForLabel = id ? $(`label[for="${id}"]`).length > 0 : false;
+
+          const hasAccessibleName =
+            hasAriaLabel ||
+            hasAriaLabelledBy ||
+            hasLabelAncestor ||
+            hasForLabel;
+
+          if (!hasAccessibleName) {
+            const placeholder = $(el).attr("placeholder");
+            const title = $(el).attr("title");
+            const fallbackLabel = placeholder || title;
+            if (fallbackLabel) {
+              $(el).attr("aria-label", fallbackLabel);
+            }
+          }
+        });
+
+        // 4. Document Language Accessibility: Ensure the <html> element has a lang attribute (defaults to "en").
+        const htmlEl = $("html");
+        if (htmlEl.length > 0 && !htmlEl.attr("lang")) {
+          htmlEl.attr("lang", "en");
+        }
+
         const assetTasks: (() => Promise<void>)[] = [];
 
         $("img").each((_, el) => {

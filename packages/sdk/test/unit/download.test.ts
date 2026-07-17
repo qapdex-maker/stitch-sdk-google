@@ -212,6 +212,100 @@ describe("DownloadAssetsHandler", () => {
     expect(writtenHtml).toContain('id="svg4" aria-hidden="false"');
   });
 
+  it("automatically adds lang attribute to html and aria-label to unlabelled form controls", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<input id="input1" placeholder="Enter name">' +
+      '<textarea id="textarea1" title="Comments"></textarea>' +
+      '<select id="select1" placeholder="Select role"><option>Role</option></select>' +
+      '<label for="input2">With label</label><input id="input2" placeholder="With label placeholder">' +
+      '<label><input id="input3" placeholder="Wrapped input placeholder"></label>' +
+      '<input id="input4" aria-label="Existing label" placeholder="Overridden placeholder">' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("input"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    // HTML lang should be added
+    expect(writtenHtml).toContain('<html lang="en">');
+
+    // Input 1: should get aria-label from placeholder
+    expect(writtenHtml).toContain(
+      'id="input1" placeholder="Enter name" aria-label="Enter name"',
+    );
+
+    // Textarea 1: should get aria-label from title
+    expect(writtenHtml).toContain(
+      'id="textarea1" title="Comments" aria-label="Comments"',
+    );
+
+    // Select 1: should get aria-label from placeholder
+    expect(writtenHtml).toContain(
+      'id="select1" placeholder="Select role" aria-label="Select role"',
+    );
+
+    // Input 2: has associated <label>, should NOT get aria-label
+    expect(writtenHtml).toContain(
+      'id="input2" placeholder="With label placeholder"',
+    );
+    expect(writtenHtml).not.toContain(
+      'id="input2" placeholder="With label placeholder" aria-label=',
+    );
+
+    // Input 3: wrapped in <label>, should NOT get aria-label
+    expect(writtenHtml).toContain(
+      'id="input3" placeholder="Wrapped input placeholder"',
+    );
+    expect(writtenHtml).not.toContain(
+      'id="input3" placeholder="Wrapped input placeholder" aria-label=',
+    );
+
+    // Input 4: has existing aria-label, should NOT be overridden
+    expect(writtenHtml).toContain(
+      'id="input4" aria-label="Existing label" placeholder="Overridden placeholder"',
+    );
+  });
+
   it("prevents directory traversal", async () => {
     const fs = await import("node:fs/promises");
     const path = await import("node:path");
