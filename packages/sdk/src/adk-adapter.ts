@@ -48,18 +48,21 @@ function cleanSchema(schema: any): any {
       typeof node.$ref === "string" &&
       node.$ref.startsWith("#/$defs/")
     ) {
-      const defName = node.$ref.replace("#/$defs/", "");
+      const defName = node.$ref.slice(8);
       if (defs[defName]) {
         const target = stripAndResolve(defs[defName], seen);
         const resolved = { ...target };
-        for (const [k, v] of Object.entries(node)) {
-          if (
-            k !== "$ref" &&
-            k !== "x-google-identifier" &&
-            k !== "deprecated" &&
-            !k.startsWith("x-google-")
-          ) {
-            resolved[k] = stripAndResolve(v, seen);
+        // OPTIMIZATION: Avoid Object.entries to prevent array of entries allocation during deep recursive schema traversal.
+        for (const k in node) {
+          if (Object.prototype.hasOwnProperty.call(node, k)) {
+            if (
+              k !== "$ref" &&
+              k !== "x-google-identifier" &&
+              k !== "deprecated" &&
+              !k.startsWith("x-google-")
+            ) {
+              resolved[k] = stripAndResolve(node[k], seen);
+            }
           }
         }
         return resolved;
@@ -69,16 +72,19 @@ function cleanSchema(schema: any): any {
     const result: any = {};
     seen.set(node, result);
 
-    for (const [key, value] of Object.entries(node)) {
-      if (
-        key === "$defs" ||
-        key === "$ref" ||
-        key === "deprecated" ||
-        key.startsWith("x-google-")
-      ) {
-        continue;
+    // OPTIMIZATION: Avoid Object.entries to prevent array of entries allocation during deep recursive schema traversal.
+    for (const key in node) {
+      if (Object.prototype.hasOwnProperty.call(node, key)) {
+        if (
+          key === "$defs" ||
+          key === "$ref" ||
+          key === "deprecated" ||
+          key.startsWith("x-google-")
+        ) {
+          continue;
+        }
+        result[key] = stripAndResolve(node[key], seen);
       }
-      result[key] = stripAndResolve(value, seen);
     }
     return result;
   }
