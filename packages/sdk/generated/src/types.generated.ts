@@ -4,7 +4,11 @@ DO NOT EDIT — changes will be overwritten.
 
 Source: tools-manifest.json (sha256:f20f91d571a1...)
         domain-map.json     (sha256:715639788724...)
+ palette-a11y-form-inputs-6830512827675840408
+Generated: 2026-07-17T00:22:54.538Z
+=======
 Generated: 2026-07-16T23:49:20.081Z
+ main
  */
 
 /** A component style token in a design system. */
