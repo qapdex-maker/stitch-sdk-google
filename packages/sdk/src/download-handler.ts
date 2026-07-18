@@ -116,20 +116,29 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         // If an img tag is missing the alt attribute entirely, screen readers will read
         // out the raw filename (which after rewriting is a cryptic hash like "banner-a1b2c3d4.png").
         // Setting an empty alt="" tells screen readers to gracefully ignore decorative images.
+        // If there is a title attribute, fallback to title instead of an empty string.
         $("img").each((_, el) => {
           if ($(el).attr("alt") === undefined) {
-            $(el).attr("alt", "");
+            const title = $(el).attr("title");
+            $(el).attr("alt", title || "");
           }
         });
 
         // 1. Interactive Elements Accessibility: If a button or link has a `title` attribute
         // but lacks an `aria-label`, populate `aria-label` with the `title` text. This ensures
         // screen readers read a descriptive label instead of silence or cryptic child elements.
+        // Also, if the button/link lacks an aria-label and title but has an inner SVG with a <title>,
+        // extract it and use it as the aria-label.
         $("button, a").each((_, el) => {
           const title = $(el).attr("title");
           const ariaLabel = $(el).attr("aria-label");
           if (title && !ariaLabel) {
             $(el).attr("aria-label", title);
+          } else if (!title && !ariaLabel) {
+            const svgTitle = $(el).find("svg title").first().text().trim();
+            if (svgTitle) {
+              $(el).attr("aria-label", svgTitle);
+            }
           }
         });
 
@@ -155,18 +164,44 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         // 3. Form Input Accessibility: Automatically label form controls (input, textarea, select)
         // that lack an accessible name (aria-label, aria-labelledby, or an associated label element),
         // using their placeholder or title attribute.
+        // Before we run this, we can also perform automatic label association for nearby labels:
+        // - A label element directly preceding the form control (if neither is currently associated).
+        // - A checkbox/radio followed immediately by a label element (if neither is currently associated).
+        let labelCounter = 1;
         $("input, textarea, select").each((_, el) => {
+          const type = $(el).attr("type");
           const id = $(el).attr("id");
           const hasAriaLabel = $(el).attr("aria-label") !== undefined;
           const hasAriaLabelledBy = $(el).attr("aria-labelledby") !== undefined;
           const hasLabelAncestor = $(el).closest("label").length > 0;
           const hasForLabel = id ? $(`label[for="${id}"]`).length > 0 : false;
 
-          const hasAccessibleName =
+          let hasAccessibleName =
             hasAriaLabel ||
             hasAriaLabelledBy ||
             hasLabelAncestor ||
             hasForLabel;
+
+          if (!hasAccessibleName) {
+            // Check for adjacent/preceding unassociated label elements
+            if (type === "checkbox" || type === "radio") {
+              const nextEl = $(el).next();
+              if (nextEl.is("label") && !nextEl.attr("for")) {
+                const uniqueId = id || `auto-label-control-${labelCounter++}`;
+                if (!id) $(el).attr("id", uniqueId);
+                nextEl.attr("for", uniqueId);
+                hasAccessibleName = true;
+              }
+            } else {
+              const prevEl = $(el).prev();
+              if (prevEl.is("label") && !prevEl.attr("for")) {
+                const uniqueId = id || `auto-label-control-${labelCounter++}`;
+                if (!id) $(el).attr("id", uniqueId);
+                prevEl.attr("for", uniqueId);
+                hasAccessibleName = true;
+              }
+            }
+          }
 
           if (!hasAccessibleName) {
             const placeholder = $(el).attr("placeholder");
