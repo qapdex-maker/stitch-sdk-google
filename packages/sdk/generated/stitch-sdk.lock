@@ -1,23 +1,14 @@
 {
   "schemaVersion": 1,
   "generated": {
- palette-a11y-form-inputs-6830512827675840408
-    "generatedAt": "2026-07-17T00:22:55.140Z",
-    "sourceHash": "sha256:2d81c0d141d68a81f8f5e9191dbad91c506bf672cf0cb9ffd54ae3d49582d44d",
-=======
-    "generatedAt": "2026-07-16T23:49:20.694Z",
-    "sourceHash": "sha256:6dc76f3a477a899c64090d5d42daa59abcb5fe1c8d224d0c8809a951fd2082fb",
- main
+    "generatedAt": "2026-07-18T00:04:18.102Z",
+    "sourceHash": "sha256:6ad23316398ee224bea7d9c7b5ec67a148adf63e08f86ef8aa36af7fe34422a9",
     "manifestHash": "sha256:f20f91d571a1fcddd97c2cacefee7bf38d5dd39f1e8f2075436bfcff0562cc4b",
     "domainMapHash": "sha256:71563978872456664fc52de9f35bdaf8537b1595d24e66038fbab741747244b4",
     "fileCount": 8
   },
   "domainMap": {
- palette-a11y-form-inputs-6830512827675840408
-    "generatedAt": "2026-07-17T00:22:55.140Z",
-=======
-    "generatedAt": "2026-07-16T23:49:20.694Z",
- main
+    "generatedAt": "2026-07-18T00:04:18.102Z",
     "sourceHash": "sha256:71563978872456664fc52de9f35bdaf8537b1595d24e66038fbab741747244b4",
     "manifestHash": "sha256:f20f91d571a1fcddd97c2cacefee7bf38d5dd39f1e8f2075436bfcff0562cc4b",
     "classCount": 4,

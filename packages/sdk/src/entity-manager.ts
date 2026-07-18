@@ -1,10 +1,13 @@
 import { parseResourceName } from "./utils.js";
 
 /** Extract all ID segments from a standard resource name (e.g. projects/123/screens/456) */
-export function parseAllSegments(name: string): Record<string, string> {
-  if (!name || !name.includes("/")) return {};
+export function parseAllSegments(
+  name: string,
+  result: Record<string, string> = {},
+): Record<string, string> {
+  // Use indexOf for faster primitive check instead of includes
+  if (!name || name.indexOf("/") === -1) return result;
   const parts = name.split("/");
-  const result: Record<string, string> = {};
   for (let i = 0; i < parts.length - 1; i += 2) {
     let key = parts[i];
     if (key.endsWith("s")) key = key.slice(0, -1);
@@ -35,7 +38,7 @@ export class EntityManager {
 
     if (typeof data === "string") {
       canonicalId = parseResourceName(data);
-      Object.assign(parsedValues, parseAllSegments(data));
+      parseAllSegments(data, parsedValues);
       // Fallback if data is just the bare ID
       if (!parsedValues[referenceKeys[referenceKeys.length - 1]]) {
         parsedValues[referenceKeys[referenceKeys.length - 1]] = canonicalId;
@@ -43,7 +46,7 @@ export class EntityManager {
     } else if (data && typeof data === "object") {
       if (data.name) {
         canonicalId = parseResourceName(data.name);
-        Object.assign(parsedValues, parseAllSegments(data.name));
+        parseAllSegments(data.name, parsedValues);
       } else {
         // Fallback to reading the last reference key or 'id'
         const lastKey = referenceKeys[referenceKeys.length - 1];
@@ -72,8 +75,8 @@ export class EntityManager {
     const className = EntityClass.name;
     const cacheKey = `${className}:${canonicalId}`;
 
-    if (this.cache.has(cacheKey)) {
-      const instance = this.cache.get(cacheKey);
+    let instance = this.cache.get(cacheKey);
+    if (instance !== undefined) {
       if (data && typeof data === "object") {
         instance.data = { ...instance.data, ...data };
       }
@@ -81,7 +84,7 @@ export class EntityManager {
     }
 
     // Direct instantiation is restricted for users, but allowed here
-    const instance = new EntityClass(this.client, data) as any;
+    instance = new EntityClass(this.client, data) as any;
 
     // Assign reference keys dynamically based on parsed values
     for (const key of referenceKeys) {
