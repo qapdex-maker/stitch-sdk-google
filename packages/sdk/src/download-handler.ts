@@ -219,6 +219,35 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           htmlEl.attr("lang", "en");
         }
 
+        // 5. Links Opening in New Tabs (Accessibility & Security): Ensure links with target="_blank"
+        // have safe security attributes (noopener and noreferrer) and explicitly announce to screen reader
+        // users that they open in a new tab/window by appending " (opens in a new tab)" to the aria-label.
+        $('a[target="_blank"]').each((_, el) => {
+          // Security: set rel="noopener noreferrer" safely
+          const currentRel = $(el).attr("rel") || "";
+          const relParts = currentRel.split(/\s+/).filter(Boolean);
+          if (!relParts.includes("noopener")) relParts.push("noopener");
+          if (!relParts.includes("noreferrer")) relParts.push("noreferrer");
+          $(el).attr("rel", relParts.join(" "));
+
+          // Accessibility: append " (opens in a new tab)" to aria-label if we have some accessible name
+          let accessibleName =
+            $(el).attr("aria-label") ||
+            $(el).attr("title") ||
+            $(el).text().trim();
+          if (accessibleName) {
+            const warningText = "(opens in a new tab)";
+            if (!accessibleName.includes(warningText)) {
+              const currentAriaLabel = $(el).attr("aria-label");
+              if (currentAriaLabel) {
+                $(el).attr("aria-label", `${currentAriaLabel} ${warningText}`);
+              } else {
+                $(el).attr("aria-label", `${accessibleName} ${warningText}`);
+              }
+            }
+          }
+        });
+
         const assetTasks: (() => Promise<void>)[] = [];
 
         $("img").each((_, el) => {
