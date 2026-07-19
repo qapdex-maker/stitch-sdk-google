@@ -14,6 +14,7 @@
 
 import { EntityManager } from "../../src/entity-manager.js";
 import { describe, it, expect, vi } from "vitest";
+import * as cheerio from "cheerio";
 import {
   DownloadAssetsHandler,
   sanitizeFilename,
@@ -426,6 +427,80 @@ describe("DownloadAssetsHandler", () => {
     expect(writtenHtml).toContain(
       '<input type="checkbox" id="chk1"><label id="lbl2" for="chk1">Remember me</label>',
     );
+  });
+
+  it("programmatically adds security rel and accessible aria-label warning to target='_blank' links", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<a id="lnk1" href="https://example.com" target="_blank">External Link</a>' +
+      '<a id="lnk2" href="https://example.com" target="_blank" rel="noopener">Another External</a>' +
+      '<a id="lnk3" href="https://example.com" target="_blank" aria-label="Privacy Policy">Privacy</a>' +
+      '<a id="lnk4" href="https://example.com" target="_blank" aria-label="Terms (opens in a new tab)">Terms</a>' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("lnk1"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    // Load writtenHtml with cheerio to parse cleanly and verify attributes
+    const $written = cheerio.load(writtenHtml);
+
+    const lnk1 = $written("#lnk1");
+    expect(lnk1.attr("rel")).toBe("noopener noreferrer");
+    expect(lnk1.attr("aria-label")).toBe("External Link (opens in a new tab)");
+
+    const lnk2 = $written("#lnk2");
+    expect(lnk2.attr("rel")).toBe("noopener noreferrer");
+    expect(lnk2.attr("aria-label")).toBe(
+      "Another External (opens in a new tab)",
+    );
+
+    const lnk3 = $written("#lnk3");
+    expect(lnk3.attr("rel")).toBe("noopener noreferrer");
+    expect(lnk3.attr("aria-label")).toBe("Privacy Policy (opens in a new tab)");
+
+    const lnk4 = $written("#lnk4");
+    expect(lnk4.attr("rel")).toBe("noopener noreferrer");
+    expect(lnk4.attr("aria-label")).toBe("Terms (opens in a new tab)");
   });
 
   it("prevents directory traversal", async () => {

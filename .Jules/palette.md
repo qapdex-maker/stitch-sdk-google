@@ -16,3 +16,8 @@ This journal contains only critical UX and accessibility learnings. Routine upda
 
 **Learning:** Dynamic layout engines or AI-generated screens frequently output button/link components containing inner inline SVGs that embed standard SVG `<title>` elements but do not propagate them as visual or screen-reader accessible names. Additionally, many layout generators fail to explicitly couple adjacent `<label>` elements with form inputs via `for` and `id` attributes, resulting in broken mouse-click focus interactions and screen reader context loss.
 **Action:** Programmatically parse nested SVG titles to automatically populate `aria-label` on wrapper buttons/links if they have no explicit accessibility descriptors, and dynamically associate preceding/succeeding unassociated `<label>` elements with their adjacent form controls by generating safe unique IDs and adding `id` and `for` attributes.
+
+## 2026-04-03 - [Security and Accessible Tab Announcements for target="_blank" Links]
+
+**Learning:** HTML screens downloaded or generated dynamically may contain links with `target="_blank"`. Without security relations (`noopener` and `noreferrer`), these links expose users to reverse tabnabbing vulnerabilities. Additionally, screen reader users are often unaware when links open in a new tab/window, which can cause confusion and navigation disorientation.
+**Action:** Post-process downloaded screen HTML code to ensure all `target="_blank"` links are explicitly tagged with `rel="noopener noreferrer"`. Enhance user accessibility by appending " (opens in a new tab)" to the link's `aria-label` attribute if any accessible name exists, and avoid redundant appends if the warning text is already present.
