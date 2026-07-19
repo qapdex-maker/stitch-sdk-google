@@ -32,7 +32,10 @@ function cleanSchema(schema: any): any {
 
   function stripAndResolve(node: any, seen = new Map()): any {
     if (!node || typeof node !== "object") return node;
-    if (seen.has(node)) return seen.get(node);
+
+    // OPTIMIZATION: Avoid calling seen.has(node) followed by seen.get(node) to eliminate double Map lookup overhead.
+    const cached = seen.get(node);
+    if (cached !== undefined) return cached;
 
     if (Array.isArray(node)) {
       const arr: any[] = [];
