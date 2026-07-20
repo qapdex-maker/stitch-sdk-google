@@ -211,6 +211,39 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
               $(el).attr("aria-label", fallbackLabel);
             }
           }
+
+          // 3b. Required Field Accessibility: If a form control has visual cues indicating it is required
+          // (e.g. an asterisk or "required" text in the label, placeholder, or title) but lacks semantic markers,
+          // programmatically add aria-required="true".
+          const isRequired = $(el).attr("required") !== undefined;
+          const isAriaRequired = $(el).attr("aria-required") === "true";
+
+          if (!isRequired && !isAriaRequired) {
+            let labelText = "";
+            const currentId = $(el).attr("id");
+            const parentLabel = $(el).closest("label");
+            if (parentLabel.length > 0) {
+              labelText = parentLabel.text();
+            } else if (currentId) {
+              labelText = $(`label[for="${currentId}"]`).text();
+            }
+
+            const placeholder = $(el).attr("placeholder") || "";
+            const title = $(el).attr("title") || "";
+
+            const hasRequiredIndicator = (text: string) => {
+              const cleaned = text.trim();
+              return cleaned.includes("*") || /\brequired\b/i.test(cleaned);
+            };
+
+            if (
+              hasRequiredIndicator(labelText) ||
+              hasRequiredIndicator(placeholder) ||
+              hasRequiredIndicator(title)
+            ) {
+              $(el).attr("aria-required", "true");
+            }
+          }
         });
 
         // 4. Document Language Accessibility: Ensure the <html> element has a lang attribute (defaults to "en").

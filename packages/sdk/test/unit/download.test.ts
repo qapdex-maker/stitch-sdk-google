@@ -307,6 +307,83 @@ describe("DownloadAssetsHandler", () => {
     );
   });
 
+  it("programmatically adds aria-required='true' to required form fields with visual indicators", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<label for="req-input-1">Username *</label><input id="req-input-1">' +
+      '<label>Password (required) <input id="req-input-2" type="password"></label>' +
+      '<input id="req-input-3" placeholder="Email (Required)">' +
+      '<textarea id="req-input-4" title="Feedback *"></textarea>' +
+      '<input id="req-input-5" required placeholder="Already required *">' +
+      '<input id="req-input-6" aria-required="true" placeholder="Already aria-required *">' +
+      '<input id="non-req-input" placeholder="Optional field">' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("req-input"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    const $written = cheerio.load(writtenHtml);
+
+    // 1. input with adjacent label "Username *" -> aria-required="true"
+    expect($written("#req-input-1").attr("aria-required")).toBe("true");
+
+    // 2. input wrapped in label "Password (required)" -> aria-required="true"
+    expect($written("#req-input-2").attr("aria-required")).toBe("true");
+
+    // 3. input with placeholder containing "(Required)" -> aria-required="true"
+    expect($written("#req-input-3").attr("aria-required")).toBe("true");
+
+    // 4. textarea with title containing "*" -> aria-required="true"
+    expect($written("#req-input-4").attr("aria-required")).toBe("true");
+
+    // 5 & 6. Already have required or aria-required -> preserved
+    expect($written("#req-input-5").attr("aria-required")).toBeUndefined();
+    expect($written("#req-input-6").attr("aria-required")).toBe("true");
+
+    // 7. Optional input -> should NOT have aria-required
+    expect($written("#non-req-input").attr("aria-required")).toBeUndefined();
+  });
+
   it("handles image fallback alt with title and extracts SVG titles for buttons/links", async () => {
     const fs = await import("node:fs/promises");
     vi.mocked(fs.writeFile).mockClear();

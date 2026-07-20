@@ -21,3 +21,8 @@ This journal contains only critical UX and accessibility learnings. Routine upda
 
 **Learning:** HTML screens downloaded or generated dynamically may contain links with `target="_blank"`. Without security relations (`noopener` and `noreferrer`), these links expose users to reverse tabnabbing vulnerabilities. Additionally, screen reader users are often unaware when links open in a new tab/window, which can cause confusion and navigation disorientation.
 **Action:** Post-process downloaded screen HTML code to ensure all `target="_blank"` links are explicitly tagged with `rel="noopener noreferrer"`. Enhance user accessibility by appending " (opens in a new tab)" to the link's `aria-label` attribute if any accessible name exists, and avoid redundant appends if the warning text is already present.
+
+## 2026-04-04 - [Required Form Fields Visual and Semantic Coupling]
+
+**Learning:** Designers and code generators frequently mark required inputs/textareas/selects using visual cues (such as an asterisk `*` or a textual "(required)" annotation in labels or placeholders) without mapping them to the standard `required` or `aria-required` HTML attributes. This lack of semantic labeling leaves screen reader users unaware that a field must be populated to successfully complete a form.
+**Action:** Automatically parse visual indicators (like `*` or `required`) in associated labels, placeholders, or titles, and dynamically add `aria-required="true"` to form controls that lack native `required` or `aria-required` semantic attributes.
