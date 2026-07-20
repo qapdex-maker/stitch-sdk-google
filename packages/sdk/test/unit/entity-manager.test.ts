@@ -50,4 +50,40 @@ describe("EntityManager", () => {
 
     expect(instance1).not.toBe(instance2);
   });
+
+  it("should dispose of a specific entity", () => {
+    const manager = new EntityManager({});
+    const instance1 = manager.resolve(DummyEntity, ["id"], "123");
+
+    // Check that it's in the cache
+    const instanceSame = manager.resolve(DummyEntity, ["id"], "123");
+    expect(instanceSame).toBe(instance1);
+
+    // Dispose
+    manager.dispose(instance1);
+
+    // Now it should be recreated (not cached)
+    const instanceAfter = manager.resolve(DummyEntity, ["id"], "123");
+    expect(instanceAfter).not.toBe(instance1);
+  });
+
+  it("should dispose of a specific entity using fallback if symbol is missing", () => {
+    const manager = new EntityManager({});
+    const instance1 = manager.resolve(DummyEntity, ["id"], "123");
+
+    // Forcefully remove the Symbol to test fallback logic
+    const symbols = Object.getOwnPropertySymbols(instance1);
+    for (const sym of symbols) {
+      if (sym.toString().includes("stitch.cacheKey")) {
+        delete (instance1 as any)[sym];
+      }
+    }
+
+    // Dispose
+    manager.dispose(instance1);
+
+    // Now it should be recreated (not cached)
+    const instanceAfter = manager.resolve(DummyEntity, ["id"], "123");
+    expect(instanceAfter).not.toBe(instance1);
+  });
 });

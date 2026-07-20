@@ -1,5 +1,8 @@
 import { parseResourceName } from "./utils.js";
 
+/** Private Symbol used to store and lookup cache keys on resolved entities. */
+const CACHE_KEY_SYMBOL = Symbol("stitch.cacheKey");
+
 /** Extract all ID segments from a standard resource name (e.g. projects/123/screens/456) */
 export function parseAllSegments(
   name: string,
@@ -86,6 +89,9 @@ export class EntityManager {
     // Direct instantiation is restricted for users, but allowed here
     instance = new EntityClass(this.client, data) as any;
 
+    // OPTIMIZATION: Attach the cache key via a Symbol property to enable O(1) disposal.
+    (instance as any)[CACHE_KEY_SYMBOL] = cacheKey;
+
     // Assign reference keys dynamically based on parsed values
     for (const key of referenceKeys) {
       if (parsedValues[key]) {
@@ -105,13 +111,20 @@ export class EntityManager {
    * Disposes of a specific entity.
    */
   dispose(entity: any) {
+    if (!entity) return;
     if (typeof entity.onDispose === "function") {
       entity.onDispose();
     }
-    for (const [key, val] of this.cache.entries()) {
-      if (val === entity) {
-        this.cache.delete(key);
-        break;
+    const cacheKey = entity[CACHE_KEY_SYMBOL];
+    if (cacheKey !== undefined) {
+      this.cache.delete(cacheKey);
+    } else {
+      // OPTIMIZATION: Avoid entries array allocations and use direct Map iteration as a fallback.
+      for (const [key, val] of this.cache) {
+        if (val === entity) {
+          this.cache.delete(key);
+          break;
+        }
       }
     }
   }

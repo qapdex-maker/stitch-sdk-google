@@ -7,3 +7,8 @@
 
 **Learning:** In `EntityManager.resolve()`, checking the cache with `Map.prototype.has()` followed by retrieving the instance via `Map.prototype.get()` forces the Javascript engine to perform two separate tree/hash lookups in the Map structure. Switching to a single-pass `get()` lookup reduces the overhead by ~43%. Furthermore, calling `parseAllSegments()` and then copying with `Object.assign()` during hot-path resolutions creates garbage collectable intermediate objects. Accepting an optional target object parameters lets us mutate `parsedValues` in-place, eliminating both the extra object allocation and the subsequent assignment overhead.
 **Action:** Always optimize Map caches by replacing double lookups (`has` + `get`) with a single `get` check against `undefined`. For parsing helper functions that feed into hot-path object creators, support passing a target object to mutate in-place, completely avoiding intermediate objects and `Object.assign` operations.
+
+## 2026-07-20 - O(1) Cache Disposal via Symbol-keyed Cache Keys
+
+**Learning:** In `EntityManager.dispose(entity)`, disposing of a cached entity previously required iterating over the entire cache's entries using `this.cache.entries()` in an O(N) linear scan, which also allocated intermediate entry arrays (`[key, value]`) for every resolved item. By assigning the Cache Key directly to the resolved entity instance using a private, non-enumerable JS `Symbol` property on resolution, we can look up and delete the cache entry in O(1) time without any array allocations.
+**Action:** Store entity/item metadata or internal keys as Symbol-keyed properties directly on instances to enable O(1) lookups and deletions in managers or caches, rather than iterating through cache entries.
