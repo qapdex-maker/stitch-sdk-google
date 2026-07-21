@@ -16,6 +16,8 @@ export function parseAllSegments(
   return result;
 }
 
+const cacheKeySymbol = Symbol("cacheKey");
+
 export class EntityManager {
   private cache = new Map<string, any>();
   private client: any;
@@ -97,6 +99,22 @@ export class EntityManager {
       instance.onCreate();
     }
 
+    // OPTIMIZATION: Store the cache key on the resolved entity instance using a private, non-enumerable Symbol property.
+    // This enables O(1) cache deletion of resolved instances in EntityManager.dispose without O(N) traversals.
+    // Wrap in try-catch/isExtensible guard to safely handle potential frozen or sealed entities.
+    if (Object.isExtensible(instance)) {
+      try {
+        Object.defineProperty(instance, cacheKeySymbol, {
+          value: cacheKey,
+          writable: true,
+          configurable: true,
+          enumerable: false,
+        });
+      } catch (e) {
+        // Safe fallback if defineProperty fails for any reason
+      }
+    }
+
     this.cache.set(cacheKey, instance);
     return instance;
   }
@@ -105,13 +123,21 @@ export class EntityManager {
    * Disposes of a specific entity.
    */
   dispose(entity: any) {
+    if (!entity) return;
     if (typeof entity.onDispose === "function") {
       entity.onDispose();
     }
-    for (const [key, val] of this.cache.entries()) {
-      if (val === entity) {
-        this.cache.delete(key);
-        break;
+    // OPTIMIZATION: Try deleting in O(1) using the non-enumerable cacheKey Symbol stored on the instance.
+    const key = entity[cacheKeySymbol];
+    if (key !== undefined) {
+      this.cache.delete(key);
+    } else {
+      // Fallback O(N) traversal in case the Symbol was stripped or not defined
+      for (const [k, val] of this.cache.entries()) {
+        if (val === entity) {
+          this.cache.delete(k);
+          break;
+        }
       }
     }
   }

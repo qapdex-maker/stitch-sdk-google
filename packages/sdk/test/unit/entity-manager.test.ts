@@ -50,4 +50,52 @@ describe("EntityManager", () => {
 
     expect(instance1).not.toBe(instance2);
   });
+
+  it("should dispose of a specific entity in O(1) time and use fallback if Symbol is missing", () => {
+    const manager = new EntityManager({});
+    const refKeys = ["projectId", "id"];
+
+    const instance1 = manager.resolve(DummyEntity, refKeys, {
+      id: "123",
+      projectId: "p1",
+    });
+
+    // Check that we can resolve it from cache
+    const cachedInstance = manager.resolve(DummyEntity, refKeys, {
+      id: "123",
+      projectId: "p1",
+    });
+    expect(cachedInstance).toBe(instance1);
+
+    // Dispose of the entity (should be O(1) using Symbol)
+    manager.dispose(instance1);
+
+    // Assert that the instance is removed from the cache Map
+    const resolvedAgain = manager.resolve(DummyEntity, refKeys, {
+      id: "123",
+      projectId: "p1",
+    });
+    expect(resolvedAgain).not.toBe(instance1);
+
+    // Verify O(N) fallback if Symbol is stripped/deleted from the instance
+    const instance2 = manager.resolve(DummyEntity, refKeys, {
+      id: "456",
+      projectId: "p1",
+    });
+
+    // Delete all symbols from the instance to trigger the O(N) fallback path
+    const symbols = Object.getOwnPropertySymbols(instance2);
+    for (const sym of symbols) {
+      delete (instance2 as any)[sym];
+    }
+
+    manager.dispose(instance2);
+
+    // Check that instance2 was still successfully disposed/deleted from cache
+    const resolvedAgain2 = manager.resolve(DummyEntity, refKeys, {
+      id: "456",
+      projectId: "p1",
+    });
+    expect(resolvedAgain2).not.toBe(instance2);
+  });
 });
