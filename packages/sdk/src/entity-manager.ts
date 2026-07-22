@@ -16,7 +16,6 @@ export function parseAllSegments(
   return result;
 }
 
-// Private non-enumerable symbol to enable O(1) cache deletion of resolved instances
 const cacheKeySymbol = Symbol("cacheKey");
 
 export class EntityManager {
@@ -100,13 +99,10 @@ export class EntityManager {
       instance.onCreate();
     }
 
-    // Store the cache key on the resolved entity instance using our private, non-enumerable Symbol property.
-    // Guard with Object.isExtensible and try-catch for frozen or sealed objects.
-    if (
-      instance &&
-      typeof instance === "object" &&
-      Object.isExtensible(instance)
-    ) {
+    // OPTIMIZATION: Store the cache key on the resolved entity instance using a private, non-enumerable Symbol property.
+    // This enables O(1) cache deletion of resolved instances in EntityManager.dispose without O(N) traversals.
+    // Wrap in try-catch/isExtensible guard to safely handle potential frozen or sealed entities.
+    if (Object.isExtensible(instance)) {
       try {
         Object.defineProperty(instance, cacheKeySymbol, {
           value: cacheKey,
@@ -115,7 +111,7 @@ export class EntityManager {
           enumerable: false,
         });
       } catch (e) {
-        // Fallback silently if definition fails despite extensibility check
+        // Safe fallback if defineProperty fails for any reason
       }
     }
 
@@ -127,21 +123,21 @@ export class EntityManager {
    * Disposes of a specific entity.
    */
   dispose(entity: any) {
+    if (!entity) return;
     if (typeof entity.onDispose === "function") {
       entity.onDispose();
     }
-    if (entity && typeof entity === "object") {
-      const cacheKey = entity[cacheKeySymbol];
-      if (cacheKey && this.cache.get(cacheKey) === entity) {
-        this.cache.delete(cacheKey);
-        return;
-      }
-    }
-    // Fallback O(N) traversal loop for non-extensible/frozen/sealed or otherwise uncached entities
-    for (const [key, val] of this.cache.entries()) {
-      if (val === entity) {
-        this.cache.delete(key);
-        break;
+    // OPTIMIZATION: Try deleting in O(1) using the non-enumerable cacheKey Symbol stored on the instance.
+    const key = entity[cacheKeySymbol];
+    if (key !== undefined) {
+      this.cache.delete(key);
+    } else {
+      // Fallback O(N) traversal in case the Symbol was stripped or not defined
+      for (const [k, val] of this.cache.entries()) {
+        if (val === entity) {
+          this.cache.delete(k);
+          break;
+        }
       }
     }
   }

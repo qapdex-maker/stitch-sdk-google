@@ -211,6 +211,47 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
               $(el).attr("aria-label", fallbackLabel);
             }
           }
+
+          // 3b. Visual Required Indicator Mapping: Map visual required indicators (like asterisks
+          // or the word "required", case-insensitively) to semantic aria-required="true" attributes
+          // if the form control lacks a required or aria-required attribute.
+          const hasRequired = $(el).attr("required") !== undefined;
+          const hasAriaRequired = $(el).attr("aria-required") !== undefined;
+
+          if (!hasRequired && !hasAriaRequired) {
+            const textSources: string[] = [];
+            const currentId = $(el).attr("id");
+
+            // Check label texts
+            const parentLabel = $(el).closest("label");
+            if (parentLabel.length > 0) {
+              textSources.push(parentLabel.text());
+            }
+            if (currentId) {
+              $(`label[for="${currentId}"]`).each((_, labelEl) => {
+                textSources.push($(labelEl).text());
+              });
+            }
+
+            // Check placeholder and title
+            const placeholder = $(el).attr("placeholder");
+            if (placeholder) {
+              textSources.push(placeholder);
+            }
+            const title = $(el).attr("title");
+            if (title) {
+              textSources.push(title);
+            }
+
+            const requiredRegex = /\*|required/i;
+            const isVisuallyRequired = textSources.some((text) =>
+              requiredRegex.test(text),
+            );
+
+            if (isVisuallyRequired) {
+              $(el).attr("aria-required", "true");
+            }
+          }
         });
 
         // 4. Document Language Accessibility: Ensure the <html> element has a lang attribute (defaults to "en").
