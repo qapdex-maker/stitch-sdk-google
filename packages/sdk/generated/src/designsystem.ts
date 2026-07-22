@@ -4,7 +4,11 @@ DO NOT EDIT — changes will be overwritten.
 
 Source: tools-manifest.json (sha256:f20f91d571a1...)
         domain-map.json     (sha256:715639788724...)
+ bolt-entity-manager-cache-dispose-o1-5155838171281832744
 Generated: 2026-07-21T00:20:31.455Z
+=======
+Generated: 2026-07-21T00:16:16.652Z
+ main
  */
 import { type StitchToolClient } from "../../src/client.js";
 import { StitchError } from "../../src/spec/errors.js";
