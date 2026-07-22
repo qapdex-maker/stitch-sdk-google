@@ -307,6 +307,93 @@ describe("DownloadAssetsHandler", () => {
     );
   });
 
+  it("automatically adds aria-required='true' when visual required indicators are present", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<label for="inp-req-ast">Username *</label><input id="inp-req-ast">' +
+      '<label for="inp-req-word">Email (required)</label><input id="inp-req-word">' +
+      '<label><input id="inp-req-nested">* Password</label>' +
+      '<input id="inp-req-placeholder" placeholder="Required input">' +
+      '<input id="inp-req-title" title="First Name *">' +
+      '<input id="inp-req-aria" aria-label="Last Name (Required)">' +
+      '<input id="inp-non-req" placeholder="Optional info">' +
+      '<input id="inp-existing-req" required placeholder="With asterisk *">' +
+      '<input id="inp-existing-aria" aria-required="false" placeholder="With asterisk *">' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("inp-req-ast"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    const $written = cheerio.load(writtenHtml);
+
+    // Associated label has asterisk
+    expect($written("#inp-req-ast").attr("aria-required")).toBe("true");
+
+    // Associated label has "required"
+    expect($written("#inp-req-word").attr("aria-required")).toBe("true");
+
+    // Nested label has asterisk
+    expect($written("#inp-req-nested").attr("aria-required")).toBe("true");
+
+    // Placeholder has "Required"
+    expect($written("#inp-req-placeholder").attr("aria-required")).toBe("true");
+
+    // Title has asterisk
+    expect($written("#inp-req-title").attr("aria-required")).toBe("true");
+
+    // Aria-label has "Required"
+    expect($written("#inp-req-aria").attr("aria-required")).toBe("true");
+
+    // Non-required input should not have aria-required
+    expect($written("#inp-non-req").attr("aria-required")).toBeUndefined();
+
+    // Already has required attribute - should not override with aria-required (required is already native semantic)
+    expect($written("#inp-existing-req").attr("aria-required")).toBeUndefined();
+
+    // Already has aria-required="false" - should respect it
+    expect($written("#inp-existing-aria").attr("aria-required")).toBe("false");
+  });
+
   it("handles image fallback alt with title and extracts SVG titles for buttons/links", async () => {
     const fs = await import("node:fs/promises");
     vi.mocked(fs.writeFile).mockClear();

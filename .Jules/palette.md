@@ -21,3 +21,8 @@ This journal contains only critical UX and accessibility learnings. Routine upda
 
 **Learning:** HTML screens downloaded or generated dynamically may contain links with `target="_blank"`. Without security relations (`noopener` and `noreferrer`), these links expose users to reverse tabnabbing vulnerabilities. Additionally, screen reader users are often unaware when links open in a new tab/window, which can cause confusion and navigation disorientation.
 **Action:** Post-process downloaded screen HTML code to ensure all `target="_blank"` links are explicitly tagged with `rel="noopener noreferrer"`. Enhance user accessibility by appending " (opens in a new tab)" to the link's `aria-label` attribute if any accessible name exists, and avoid redundant appends if the warning text is already present.
+
+## 2026-04-04 - [Mapping Visual Form Indicators to Semantic ARIA Required State]
+
+**Learning:** Stitch-generated screen forms frequently convey field requirements via visual-only cues, such as asterisks `*` or `(required)` texts within their associated labels, placeholders, titles, or aria-labels. Screen reader users miss this crucial context if these visual cues do not have associated semantic attributes.
+**Action:** Programmatically parse labels, placeholders, titles, and existing aria-labels for asterisks or the word "required", and dynamically apply `aria-required="true"` to the corresponding form input, textarea, and select elements if they lack native or ARIA required states.
