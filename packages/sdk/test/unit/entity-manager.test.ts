@@ -50,4 +50,43 @@ describe("EntityManager", () => {
 
     expect(instance1).not.toBe(instance2);
   });
+
+  it("should dispose of a cached entity in O(1) using the stored cache key Symbol", () => {
+    const manager = new EntityManager({});
+    const instance = manager.resolve(DummyEntity, ["id"], "123");
+
+    // Let's verify instance is resolved from cache
+    const instanceCached = manager.resolve(DummyEntity, ["id"], "123");
+    expect(instance).toBe(instanceCached);
+
+    // Call dispose
+    manager.dispose(instance);
+
+    // After dispose, next resolve should be a new instance
+    const instanceNew = manager.resolve(DummyEntity, ["id"], "123");
+    expect(instance).not.toBe(instanceNew);
+  });
+
+  it("should correctly fallback to O(N) disposal loop for frozen or sealed entities", () => {
+    const manager = new EntityManager({});
+
+    // Create a special entity class whose instance we will freeze/seal
+    class FrozenEntity {
+      id: string;
+      data: any;
+      constructor(client: any, data: any) {
+        this.data = data;
+      }
+    }
+
+    const instance = manager.resolve(FrozenEntity, ["id"], { id: "456" });
+    Object.freeze(instance);
+
+    // Try to dispose of the frozen entity, which triggers the fallback loop
+    manager.dispose(instance);
+
+    // After dispose, next resolve should be a new instance
+    const instanceNew = manager.resolve(FrozenEntity, ["id"], "456");
+    expect(instance).not.toBe(instanceNew);
+  });
 });
