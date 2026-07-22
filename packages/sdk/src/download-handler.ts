@@ -211,6 +211,45 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
               $(el).attr("aria-label", fallbackLabel);
             }
           }
+
+          // 3b. Map Visual Required Indicators to Semantic aria-required="true"
+          const hasRequiredAttr = $(el).attr("required") !== undefined;
+          const hasAriaRequiredAttr = $(el).attr("aria-required") !== undefined;
+
+          if (!hasRequiredAttr && !hasAriaRequiredAttr) {
+            let textToInspect = "";
+
+            const parentLabel = $(el).closest("label");
+            if (parentLabel.length > 0) {
+              textToInspect += " " + parentLabel.text();
+            }
+            const currentId = $(el).attr("id");
+            if (currentId) {
+              $(`label[for="${currentId}"]`).each((_, lbl) => {
+                textToInspect += " " + $(lbl).text();
+              });
+            }
+
+            const placeholder = $(el).attr("placeholder");
+            if (placeholder) {
+              textToInspect += " " + placeholder;
+            }
+            const title = $(el).attr("title");
+            if (title) {
+              textToInspect += " " + title;
+            }
+            const ariaLabel = $(el).attr("aria-label");
+            if (ariaLabel) {
+              textToInspect += " " + ariaLabel;
+            }
+
+            if (
+              textToInspect.includes("*") ||
+              /required/i.test(textToInspect)
+            ) {
+              $(el).attr("aria-required", "true");
+            }
+          }
         });
 
         // 4. Document Language Accessibility: Ensure the <html> element has a lang attribute (defaults to "en").
