@@ -513,6 +513,75 @@ describe("DownloadAssetsHandler", () => {
     );
   });
 
+  it("programmatically associates adjacent helper and error text elements using aria-describedby", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<input id="inp-help"><div class="help-text">Enter your username</div>' +
+      '<input id="inp-err"><p id="my-custom-err" class="error-msg">Incorrect format</p>' +
+      '<input id="inp-desc-already" aria-describedby="custom-desc"><span class="desc" id="custom-desc">Already linked</span>' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("inp-help"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    const $written = cheerio.load(writtenHtml);
+
+    // Check sibling helper text gets auto ID and maps to aria-describedby
+    const inpHelp = $written("#inp-help");
+    const autoId = inpHelp.attr("aria-describedby");
+    expect(autoId).toBeDefined();
+    expect(autoId).toContain("auto-desc-");
+    expect($written(`#${autoId}`).text()).toBe("Enter your username");
+
+    // Check sibling error text preserves original ID and maps to aria-describedby
+    const inpErr = $written("#inp-err");
+    expect(inpErr.attr("aria-describedby")).toBe("my-custom-err");
+
+    // Check input with existing aria-describedby preserves it
+    const inpDescAlready = $written("#inp-desc-already");
+    expect(inpDescAlready.attr("aria-describedby")).toBe("custom-desc");
+  });
+
   it("programmatically adds security rel and accessible aria-label warning to target='_blank' links", async () => {
     const fs = await import("node:fs/promises");
     vi.mocked(fs.writeFile).mockClear();
