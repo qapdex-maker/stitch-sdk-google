@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { EntityManager } from "../../src/entity-manager.js";
+import { EntityManager, parseAllSegments } from "../../src/entity-manager.js";
 
 class DummyEntity {
   id: string;
@@ -9,6 +9,35 @@ class DummyEntity {
     this.data = data;
   }
 }
+
+describe("parseAllSegments", () => {
+  it("should parse multiple segments correctly", () => {
+    const result = parseAllSegments("projects/p1/screens/s2/variants/v3");
+    expect(result).toEqual({
+      projectId: "p1",
+      screenId: "s2",
+      variantId: "v3",
+    });
+  });
+
+  it("should parse resource name with trailing slash", () => {
+    const result = parseAllSegments("projects/p1/");
+    expect(result).toEqual({
+      projectId: "p1",
+    });
+  });
+
+  it("should return empty object if no slash or empty name", () => {
+    expect(parseAllSegments("")).toEqual({});
+    expect(parseAllSegments("abc123")).toEqual({});
+  });
+
+  it("should handle odd/dangling keys or slash patterns", () => {
+    expect(parseAllSegments("projects/p1/screens")).toEqual({
+      projectId: "p1",
+    });
+  });
+});
 
 describe("EntityManager", () => {
   it("should return the same instance for a given ID (referential equality)", () => {
@@ -97,5 +126,33 @@ describe("EntityManager", () => {
       projectId: "p1",
     });
     expect(resolvedAgain2).not.toBe(instance2);
+  });
+
+  it("should correctly handle lazy parsing and verify correctness for cached entity hits", () => {
+    const manager = new EntityManager({});
+    const refKeys = ["projectId", "id"];
+
+    // First resolution (cache miss)
+    const instance1 = manager.resolve(
+      DummyEntity,
+      refKeys,
+      "projects/p1/dummies/123",
+    );
+    expect(instance1.id).toBe("123");
+    expect(instance1.projectId).toBe("p1");
+
+    // Second resolution (cache hit with string name)
+    const instance2 = manager.resolve(
+      DummyEntity,
+      refKeys,
+      "projects/p1/dummies/123",
+    );
+    expect(instance2).toBe(instance1);
+
+    // Third resolution (cache hit with object containing name)
+    const instance3 = manager.resolve(DummyEntity, refKeys, {
+      name: "projects/p1/dummies/123",
+    });
+    expect(instance3).toBe(instance1);
   });
 });
