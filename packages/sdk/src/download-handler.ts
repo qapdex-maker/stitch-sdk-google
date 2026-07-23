@@ -212,7 +212,34 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
             }
           }
 
-          // 3b. Visual Required Indicator Mapping: Map visual required indicators (like asterisks
+          // 3b. Helper and Error Text Association: Automatically associate form controls with
+          // adjacent helper, description, error, or hint texts using the aria-describedby attribute.
+          let ariaDescribedBy = $(el).attr("aria-describedby");
+          if (!ariaDescribedBy) {
+            const describedByIDs: string[] = [];
+            let nextEl = $(el).next();
+            while (nextEl.length > 0) {
+              const className = nextEl.attr("class") || "";
+              const idAttr = nextEl.attr("id");
+              if (/help|desc|error|hint/i.test(className)) {
+                let siblingId = idAttr;
+                if (!siblingId) {
+                  siblingId = `auto-desc-${labelCounter++}`;
+                  nextEl.attr("id", siblingId);
+                }
+                describedByIDs.push(siblingId);
+                nextEl = nextEl.next();
+              } else {
+                break;
+              }
+            }
+
+            if (describedByIDs.length > 0) {
+              $(el).attr("aria-describedby", describedByIDs.join(" "));
+            }
+          }
+
+          // 3c. Visual Required Indicator Mapping: Map visual required indicators (like asterisks
           // or the word "required", case-insensitively) to semantic aria-required="true" attributes
           // if the form control lacks a required or aria-required attribute.
           const hasRequired = $(el).attr("required") !== undefined;
