@@ -21,3 +21,8 @@ This journal contains only critical UX and accessibility learnings. Routine upda
 
 **Learning:** HTML screens downloaded or generated dynamically may contain links with `target="_blank"`. Without security relations (`noopener` and `noreferrer`), these links expose users to reverse tabnabbing vulnerabilities. Additionally, screen reader users are often unaware when links open in a new tab/window, which can cause confusion and navigation disorientation.
 **Action:** Post-process downloaded screen HTML code to ensure all `target="_blank"` links are explicitly tagged with `rel="noopener noreferrer"`. Enhance user accessibility by appending " (opens in a new tab)" to the link's `aria-label` attribute if any accessible name exists, and avoid redundant appends if the warning text is already present.
+
+## 2026-04-04 - [Programmatic Association of Form Helper and Error Texts]
+
+**Learning:** Dynamic/AI-generated form screens often place descriptive helper text and error message blocks directly below form input, textarea, or select controls without linking them programmatically via `aria-describedby`. This prevents screen readers from announcing critical instructions or validation states when the user focuses the control. However, blindly querying all matching sibling text blocks on a page leads to incorrect cross-control associations.
+**Action:** Traverse sibling elements _immediately succeeding_ each form control. If they contain classes identifying them as help, description, error, or hint blocks, automatically assign unique IDs (if missing) and link them sequentially via the form control's `aria-describedby` attribute, stopping traversal as soon as a non-description element is encountered.
