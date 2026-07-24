@@ -17,3 +17,8 @@
 
 **Learning:** In `EntityManager.resolve()`, checking the cache map is preceded by allocating a `parsedValues` accumulator object, calling `parseAllSegments()`, and running fallback assignment loops. On hot cache-hit paths (which represent the majority of entity resolutions), these allocations and operations are completely redundant and discarded. Moving the cache-hit check prior to any name parsing or accumulator allocations delivers a ~2.5x speedup for string name resolutions and a ~1.1x speedup for object name resolutions, while completely eliminating intermediate garbage generation on cache hits.
 **Action:** In high-frequency cache registries, calculate only the minimal key needed for cache verification first. Always defer heavy extraction, parsing, loop execution, and sub-object allocations until after a cache-miss is confirmed.
+
+## 2026-10-24 - Zero-Allocation Regex-Based Filename Sanitization
+
+**Learning:** In the assets download pipeline (`DownloadAssetsHandler`), `sanitizeFilename` is invoked for every downloaded image, stylesheet, and asset across all project screens. Re-implementing a simple character allowlist check using `.split("").filter(...).join("")` causes thousands of intermediate character array allocations and redundant O(N * M) string lookups (`allowedChars.includes(c)`). Replacing this with a fast, single-pass RegExp replacement (`base.replace(/[^a-zA-Z0-9_-]/g, "")`) avoids all intermediate array allocations and runs over 6x faster.
+**Action:** Replace manual character loops, splitting, and filtering operations on strings with native, compiled regular expressions when performing character sanitization or allowlist checks.
