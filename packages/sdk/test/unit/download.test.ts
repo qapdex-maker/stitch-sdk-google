@@ -307,7 +307,7 @@ describe("DownloadAssetsHandler", () => {
     );
   });
 
-  it("automatically maps visual required indicators to semantic aria-required attributes", async () => {
+  it("automatically adds aria-required='true' when visual required indicators are present", async () => {
     const fs = await import("node:fs/promises");
     vi.mocked(fs.writeFile).mockClear();
 
@@ -325,14 +325,15 @@ describe("DownloadAssetsHandler", () => {
 
     const htmlContent =
       "<html><body>" +
-      '<label for="req1">Email *</label><input id="req1">' +
-      '<label for="req2">Password (required)</label><input id="req2">' +
-      '<label>First Name * <input id="req3"></label>' +
-      '<input id="req4" placeholder="Last Name (Required)">' +
-      '<textarea id="req5" title="Message *"></textarea>' +
-      '<label for="opt1">Optional</label><input id="opt1">' +
-      '<input id="req-already1" required placeholder="Already required *">' +
-      '<input id="req-already2" aria-required="false" placeholder="Already false *">' +
+      '<label for="inp-req-ast">Username *</label><input id="inp-req-ast">' +
+      '<label for="inp-req-word">Email (required)</label><input id="inp-req-word">' +
+      '<label><input id="inp-req-nested">* Password</label>' +
+      '<input id="inp-req-placeholder" placeholder="Required input">' +
+      '<input id="inp-req-title" title="First Name *">' +
+      '<input id="inp-req-aria" aria-label="Last Name (Required)">' +
+      '<input id="inp-non-req" placeholder="Optional info">' +
+      '<input id="inp-existing-req" required placeholder="With asterisk *">' +
+      '<input id="inp-existing-aria" aria-required="false" placeholder="With asterisk *">' +
       "</body></html>";
 
     const mockFetch = vi.fn().mockImplementation((url) => {
@@ -358,37 +359,39 @@ describe("DownloadAssetsHandler", () => {
         typeof call[0] === "string" &&
         call[0].includes(".tmp-") &&
         typeof call[1] === "string" &&
-        call[1].includes("req1"),
+        call[1].includes("inp-req-ast"),
     );
     expect(htmlWriteCall).toBeDefined();
     const writtenHtml = htmlWriteCall![1] as string;
 
     const $written = cheerio.load(writtenHtml);
 
-    // Email * -> aria-required="true"
-    expect($written("#req1").attr("aria-required")).toBe("true");
+    // Associated label has asterisk
+    expect($written("#inp-req-ast").attr("aria-required")).toBe("true");
 
-    // Password (required) -> aria-required="true"
-    expect($written("#req2").attr("aria-required")).toBe("true");
+    // Associated label has "required"
+    expect($written("#inp-req-word").attr("aria-required")).toBe("true");
 
-    // First Name * (nested) -> aria-required="true"
-    expect($written("#req3").attr("aria-required")).toBe("true");
+    // Nested label has asterisk
+    expect($written("#inp-req-nested").attr("aria-required")).toBe("true");
 
-    // Last Name (Required) (placeholder) -> aria-required="true"
-    expect($written("#req4").attr("aria-required")).toBe("true");
+    // Placeholder has "Required"
+    expect($written("#inp-req-placeholder").attr("aria-required")).toBe("true");
 
-    // Message * (title) -> aria-required="true"
-    expect($written("#req5").attr("aria-required")).toBe("true");
+    // Title has asterisk
+    expect($written("#inp-req-title").attr("aria-required")).toBe("true");
 
-    // Optional -> no aria-required
-    expect($written("#opt1").attr("aria-required")).toBeUndefined();
+    // Aria-label has "Required"
+    expect($written("#inp-req-aria").attr("aria-required")).toBe("true");
 
-    // Already required -> preserve original required (no additional aria-required="true" added)
-    expect($written("#req-already1").attr("required")).toBeDefined();
-    expect($written("#req-already1").attr("aria-required")).toBeUndefined();
+    // Non-required input should not have aria-required
+    expect($written("#inp-non-req").attr("aria-required")).toBeUndefined();
 
-    // Already false -> preserve original aria-required="false"
-    expect($written("#req-already2").attr("aria-required")).toBe("false");
+    // Already has required attribute - should not override with aria-required (required is already native semantic)
+    expect($written("#inp-existing-req").attr("aria-required")).toBeUndefined();
+
+    // Already has aria-required="false" - should respect it
+    expect($written("#inp-existing-aria").attr("aria-required")).toBe("false");
   });
 
   it("handles image fallback alt with title and extracts SVG titles for buttons/links", async () => {

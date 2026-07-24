@@ -212,70 +212,41 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
             }
           }
 
-          // 3b. Helper and Error Text Association: Automatically associate form controls with
-          // adjacent helper, description, error, or hint texts using the aria-describedby attribute.
-          let ariaDescribedBy = $(el).attr("aria-describedby");
-          if (!ariaDescribedBy) {
-            const describedByIDs: string[] = [];
-            let nextEl = $(el).next();
-            while (nextEl.length > 0) {
-              const className = nextEl.attr("class") || "";
-              const idAttr = nextEl.attr("id");
-              if (/help|desc|error|hint/i.test(className)) {
-                let siblingId = idAttr;
-                if (!siblingId) {
-                  siblingId = `auto-desc-${labelCounter++}`;
-                  nextEl.attr("id", siblingId);
-                }
-                describedByIDs.push(siblingId);
-                nextEl = nextEl.next();
-              } else {
-                break;
-              }
-            }
+          // 3b. Map Visual Required Indicators to Semantic aria-required="true"
+          const hasRequiredAttr = $(el).attr("required") !== undefined;
+          const hasAriaRequiredAttr = $(el).attr("aria-required") !== undefined;
 
-            if (describedByIDs.length > 0) {
-              $(el).attr("aria-describedby", describedByIDs.join(" "));
-            }
-          }
+          if (!hasRequiredAttr && !hasAriaRequiredAttr) {
+            let textToInspect = "";
 
-          // 3c. Visual Required Indicator Mapping: Map visual required indicators (like asterisks
-          // or the word "required", case-insensitively) to semantic aria-required="true" attributes
-          // if the form control lacks a required or aria-required attribute.
-          const hasRequired = $(el).attr("required") !== undefined;
-          const hasAriaRequired = $(el).attr("aria-required") !== undefined;
-
-          if (!hasRequired && !hasAriaRequired) {
-            const textSources: string[] = [];
-            const currentId = $(el).attr("id");
-
-            // Check label texts
             const parentLabel = $(el).closest("label");
             if (parentLabel.length > 0) {
-              textSources.push(parentLabel.text());
+              textToInspect += " " + parentLabel.text();
             }
+            const currentId = $(el).attr("id");
             if (currentId) {
-              $(`label[for="${currentId}"]`).each((_, labelEl) => {
-                textSources.push($(labelEl).text());
+              $(`label[for="${currentId}"]`).each((_, lbl) => {
+                textToInspect += " " + $(lbl).text();
               });
             }
 
-            // Check placeholder and title
             const placeholder = $(el).attr("placeholder");
             if (placeholder) {
-              textSources.push(placeholder);
+              textToInspect += " " + placeholder;
             }
             const title = $(el).attr("title");
             if (title) {
-              textSources.push(title);
+              textToInspect += " " + title;
+            }
+            const ariaLabel = $(el).attr("aria-label");
+            if (ariaLabel) {
+              textToInspect += " " + ariaLabel;
             }
 
-            const requiredRegex = /\*|required/i;
-            const isVisuallyRequired = textSources.some((text) =>
-              requiredRegex.test(text),
-            );
-
-            if (isVisuallyRequired) {
+            if (
+              textToInspect.includes("*") ||
+              /required/i.test(textToInspect)
+            ) {
               $(el).attr("aria-required", "true");
             }
           }

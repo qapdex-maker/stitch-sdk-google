@@ -22,12 +22,7 @@ This journal contains only critical UX and accessibility learnings. Routine upda
 **Learning:** HTML screens downloaded or generated dynamically may contain links with `target="_blank"`. Without security relations (`noopener` and `noreferrer`), these links expose users to reverse tabnabbing vulnerabilities. Additionally, screen reader users are often unaware when links open in a new tab/window, which can cause confusion and navigation disorientation.
 **Action:** Post-process downloaded screen HTML code to ensure all `target="_blank"` links are explicitly tagged with `rel="noopener noreferrer"`. Enhance user accessibility by appending " (opens in a new tab)" to the link's `aria-label` attribute if any accessible name exists, and avoid redundant appends if the warning text is already present.
 
-## 2026-04-04 - [Programmatic Association of Form Helper and Error Texts]
+## 2026-04-04 - [Mapping Visual Form Indicators to Semantic ARIA Required State]
 
-**Learning:** Dynamic/AI-generated form screens often place descriptive helper text and error message blocks directly below form input, textarea, or select controls without linking them programmatically via `aria-describedby`. This prevents screen readers from announcing critical instructions or validation states when the user focuses the control. However, blindly querying all matching sibling text blocks on a page leads to incorrect cross-control associations.
-**Action:** Traverse sibling elements _immediately succeeding_ each form control. If they contain classes identifying them as help, description, error, or hint blocks, automatically assign unique IDs (if missing) and link them sequentially via the form control's `aria-describedby` attribute, stopping traversal as soon as a non-description element is encountered.
-
-## 2026-04-05 - [Keyboard and Role Accessibility for Custom Clickable Elements]
-
-**Learning:** Stitch-generated screens often use generic, non-interactive tags (like `div`, `span`, `i`, `p`, etc.) for elements with dynamic mouse-click click listeners (`onclick`). This leaves them completely invisible and unusable for screen readers and keyboard users because they lack an interactive semantic role and cannot be focused.
-**Action:** Post-process downloaded screen HTML code to identify non-interactive elements with `onclick` attributes and automatically assign them `role="button"` and `tabindex="0"` if they lack them, while preserving native interactive controls and pre-existing role/tabindex properties.
+**Learning:** Stitch-generated screen forms frequently convey field requirements via visual-only cues, such as asterisks `*` or `(required)` texts within their associated labels, placeholders, titles, or aria-labels. Screen reader users miss this crucial context if these visual cues do not have associated semantic attributes.
+**Action:** Programmatically parse labels, placeholders, titles, and existing aria-labels for asterisks or the word "required", and dynamically apply `aria-required="true"` to the corresponding form input, textarea, and select elements if they lack native or ARIA required states.
