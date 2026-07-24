@@ -316,6 +316,20 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           }
         });
 
+        // 6. Custom Clickable Element Accessibility: Ensure non-interactive elements (like div, span, i, p)
+        // with `onclick` attributes are given `role="button"` and `tabindex="0"` to make them keyboard and
+        // screen-reader accessible.
+        $("[onclick]").each((_, el) => {
+          if (!$(el).is("button, a, input, select, textarea, details")) {
+            if ($(el).attr("role") === undefined) {
+              $(el).attr("role", "button");
+            }
+            if ($(el).attr("tabindex") === undefined) {
+              $(el).attr("tabindex", "0");
+            }
+          }
+        });
+
         const assetTasks: (() => Promise<void>)[] = [];
 
         $("img").each((_, el) => {

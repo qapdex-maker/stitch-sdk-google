@@ -656,6 +656,87 @@ describe("DownloadAssetsHandler", () => {
     expect(lnk4.attr("aria-label")).toBe("Terms (opens in a new tab)");
   });
 
+  it("programmatically ensures keyboard and role accessibility for custom clickable elements with onclick", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<div id="div-click" onclick="doSomething()">Click me</div>' +
+      '<span id="span-click" onclick="doSomethingElse()" role="link">Styled Link</span>' +
+      '<i id="i-click" onclick="iconClick()" tabindex="-1">Icon Click</i>' +
+      '<button id="btn-click" onclick="buttonClick()">Native Button</button>' +
+      '<a id="a-click" onclick="linkClick()" href="#">Native Link</a>' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("div-click"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    const $written = cheerio.load(writtenHtml);
+
+    // non-interactive div element with onclick should have got role="button" and tabindex="0"
+    const divClick = $written("#div-click");
+    expect(divClick.attr("role")).toBe("button");
+    expect(divClick.attr("tabindex")).toBe("0");
+
+    // non-interactive span element with custom role should keep role and get tabindex="0"
+    const spanClick = $written("#span-click");
+    expect(spanClick.attr("role")).toBe("link");
+    expect(spanClick.attr("tabindex")).toBe("0");
+
+    // non-interactive i element with custom tabindex should keep tabindex and get role="button"
+    const iClick = $written("#i-click");
+    expect(iClick.attr("role")).toBe("button");
+    expect(iClick.attr("tabindex")).toBe("-1");
+
+    // Native interactive button should not have role or tabindex added
+    const btnClick = $written("#btn-click");
+    expect(btnClick.attr("role")).toBeUndefined();
+    expect(btnClick.attr("tabindex")).toBeUndefined();
+
+    // Native interactive link should not have role or tabindex added
+    const aClick = $written("#a-click");
+    expect(aClick.attr("role")).toBeUndefined();
+    expect(aClick.attr("tabindex")).toBeUndefined();
+  });
+
   it("prevents directory traversal", async () => {
     const fs = await import("node:fs/promises");
     const path = await import("node:path");

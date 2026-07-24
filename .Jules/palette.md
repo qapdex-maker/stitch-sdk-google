@@ -26,3 +26,8 @@ This journal contains only critical UX and accessibility learnings. Routine upda
 
 **Learning:** Dynamic/AI-generated form screens often place descriptive helper text and error message blocks directly below form input, textarea, or select controls without linking them programmatically via `aria-describedby`. This prevents screen readers from announcing critical instructions or validation states when the user focuses the control. However, blindly querying all matching sibling text blocks on a page leads to incorrect cross-control associations.
 **Action:** Traverse sibling elements _immediately succeeding_ each form control. If they contain classes identifying them as help, description, error, or hint blocks, automatically assign unique IDs (if missing) and link them sequentially via the form control's `aria-describedby` attribute, stopping traversal as soon as a non-description element is encountered.
+
+## 2026-04-05 - [Keyboard and Role Accessibility for Custom Clickable Elements]
+
+**Learning:** Stitch-generated screens often use generic, non-interactive tags (like `div`, `span`, `i`, `p`, etc.) for elements with dynamic mouse-click click listeners (`onclick`). This leaves them completely invisible and unusable for screen readers and keyboard users because they lack an interactive semantic role and cannot be focused.
+**Action:** Post-process downloaded screen HTML code to identify non-interactive elements with `onclick` attributes and automatically assign them `role="button"` and `tabindex="0"` if they lack them, while preserving native interactive controls and pre-existing role/tabindex properties.
