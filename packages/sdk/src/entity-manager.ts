@@ -5,14 +5,34 @@ export function parseAllSegments(
   name: string,
   result: Record<string, string> = {},
 ): Record<string, string> {
-  // Use indexOf for faster primitive check instead of includes
   if (!name || name.indexOf("/") === -1) return result;
-  const parts = name.split("/");
-  for (let i = 0; i < parts.length - 1; i += 2) {
-    let key = parts[i];
-    if (key.endsWith("s")) key = key.slice(0, -1);
-    result[key + "Id"] = parts[i + 1];
+
+  let start = 0;
+  let partIndex = 0;
+  let key = "";
+
+  while (start <= name.length) {
+    const slashIndex = name.indexOf("/", start);
+    const end = slashIndex === -1 ? name.length : slashIndex;
+    const segment = name.substring(start, end);
+
+    if (partIndex % 2 === 0) {
+      // This is a key segment (e.g. projects, screens)
+      if (segment.endsWith("s")) {
+        key = segment.slice(0, -1) + "Id";
+      } else {
+        key = segment + "Id";
+      }
+    } else {
+      // This is a value segment
+      result[key] = segment;
+    }
+
+    partIndex++;
+    if (slashIndex === -1) break;
+    start = slashIndex + 1;
   }
+
   return result;
 }
 

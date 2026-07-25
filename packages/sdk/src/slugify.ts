@@ -36,10 +36,11 @@ export function slugify(
         .replace(/^_+|_+$/g, "")
     : "";
 
-  let slug = base || screenId;
+  const baseSlug = base || screenId;
+  let slug = baseSlug;
   let counter = 1;
   while (seen.has(slug)) {
-    slug = `${base || screenId}_${counter++}`;
+    slug = `${baseSlug}_${counter++}`;
   }
   seen.add(slug);
   return slug;

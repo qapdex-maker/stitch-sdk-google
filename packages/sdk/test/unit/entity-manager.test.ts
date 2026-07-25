@@ -37,6 +37,24 @@ describe("parseAllSegments", () => {
       projectId: "p1",
     });
   });
+
+  it("should behave exactly like split and match all edge cases", () => {
+    // 1. Double slashes
+    expect(parseAllSegments("projects//123")).toEqual({
+      projectId: "",
+    });
+
+    // 2. Leading slashes
+    expect(parseAllSegments("/projects/123")).toEqual({
+      Id: "projects",
+    });
+
+    // 3. Multi trailing slashes
+    expect(parseAllSegments("projects/123/screens/")).toEqual({
+      projectId: "123",
+      screenId: "",
+    });
+  });
 });
 
 describe("EntityManager", () => {
