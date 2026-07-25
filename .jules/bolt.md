@@ -20,5 +20,10 @@
 
 ## 2026-10-24 - Zero-Allocation Regex-Based Filename Sanitization
 
-**Learning:** In the assets download pipeline (`DownloadAssetsHandler`), `sanitizeFilename` is invoked for every downloaded image, stylesheet, and asset across all project screens. Re-implementing a simple character allowlist check using `.split("").filter(...).join("")` causes thousands of intermediate character array allocations and redundant O(N * M) string lookups (`allowedChars.includes(c)`). Replacing this with a fast, single-pass RegExp replacement (`base.replace(/[^a-zA-Z0-9_-]/g, "")`) avoids all intermediate array allocations and runs over 6x faster.
+**Learning:** In the assets download pipeline (`DownloadAssetsHandler`), `sanitizeFilename` is invoked for every downloaded image, stylesheet, and asset across all project screens. Re-implementing a simple character allowlist check using `.split("").filter(...).join("")` causes thousands of intermediate character array allocations and redundant O(N \* M) string lookups (`allowedChars.includes(c)`). Replacing this with a fast, single-pass RegExp replacement (`base.replace(/[^a-zA-Z0-9_-]/g, "")`) avoids all intermediate array allocations and runs over 6x faster.
 **Action:** Replace manual character loops, splitting, and filtering operations on strings with native, compiled regular expressions when performing character sanitization or allowlist checks.
+
+## 2026-10-28 - Zero-Allocation Path Parsing via Single-Pass String Scanning
+
+**Learning:** In `EntityManager.resolve()`, segmenting resource names using `split("/")` causes intermediate array allocations on every cache miss. Re-implementing segment parsing using a single-pass `indexOf` and `substring` scan achieves the exact same behavioral characteristics (including edge cases such as leading, trailing, and double slashes) but runs significantly faster with zero intermediate array allocations.
+**Action:** Replace `split` operations in high-frequency parsing utilities with a manual cursor scan utilizing `indexOf` and `substring` when allocating arrays is not strictly necessary.
