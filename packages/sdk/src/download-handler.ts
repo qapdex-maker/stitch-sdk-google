@@ -168,6 +168,7 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         // - A label element directly preceding the form control (if neither is currently associated).
         // - A checkbox/radio followed immediately by a label element (if neither is currently associated).
         let labelCounter = 1;
+        let descCounter = 1;
         $("input, textarea, select").each((_, el) => {
           const type = $(el).attr("type");
           const id = $(el).attr("id");
@@ -209,6 +210,28 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
             const fallbackLabel = placeholder || title;
             if (fallbackLabel) {
               $(el).attr("aria-label", fallbackLabel);
+            }
+          }
+
+          // 3a. Associate adjacent helper/error description elements using aria-describedby
+          const hasAriaDescribedBy =
+            $(el).attr("aria-describedby") !== undefined;
+          if (!hasAriaDescribedBy) {
+            const nextEl = $(el).next();
+            if (nextEl.length > 0) {
+              const classAttr = nextEl.attr("class") || "";
+              const idAttr = nextEl.attr("id") || "";
+              if (
+                /help|desc|error|hint/i.test(classAttr) ||
+                /help|desc|error|hint/i.test(idAttr)
+              ) {
+                let descId = nextEl.attr("id");
+                if (!descId) {
+                  descId = `auto-desc-${descCounter++}`;
+                  nextEl.attr("id", descId);
+                }
+                $(el).attr("aria-describedby", descId);
+              }
             }
           }
 
