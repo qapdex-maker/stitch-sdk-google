@@ -313,6 +313,8 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         // 6. Custom Clickable Element Accessibility: Ensure non-interactive elements (like div, span, i, p)
         // with `onclick` attributes are given `role="button"` and `tabindex="0"` to make them keyboard and
         // screen-reader accessible.
+        // Also ensure they are keyboard-executable by adding an `onkeydown` listener that translates
+        // Enter and Space key presses into click events.
         $("[onclick]").each((_, el) => {
           if (!$(el).is("button, a, input, select, textarea, details")) {
             if ($(el).attr("role") === undefined) {
@@ -320,6 +322,12 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
             }
             if ($(el).attr("tabindex") === undefined) {
               $(el).attr("tabindex", "0");
+            }
+            if ($(el).attr("onkeydown") === undefined) {
+              $(el).attr(
+                "onkeydown",
+                "if (event.key === 'Enter' || event.key === ' ') { this.click(); event.preventDefault(); }",
+              );
             }
           }
         });
