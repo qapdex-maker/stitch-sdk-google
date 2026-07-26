@@ -26,3 +26,8 @@ This journal contains only critical UX and accessibility learnings. Routine upda
 
 **Learning:** Stitch-generated screen forms frequently convey field requirements via visual-only cues, such as asterisks `*` or `(required)` texts within their associated labels, placeholders, titles, or aria-labels. Screen reader users miss this crucial context if these visual cues do not have associated semantic attributes.
 **Action:** Programmatically parse labels, placeholders, titles, and existing aria-labels for asterisks or the word "required", and dynamically apply `aria-required="true"` to the corresponding form input, textarea, and select elements if they lack native or ARIA required states.
+
+## 2026-04-05 - [Keyboard Accessibility and Event Execution on Custom Clickable Elements]
+
+**Learning:** Non-interactive elements (like `div`, `span`, `i`, `p`) having `onclick` attributes are keyboard-focusable and recognized by screen readers when given `role="button"` and `tabindex="0"`, but they cannot be activated via standard keyboard navigation (using the Enter or Space key) without explicit keyboard event listeners. To comply with WCAG 2.1.1 (Keyboard), we must programmatically bind keydown events to automatically trigger the `click()` event on these elements.
+**Action:** Post-process downloaded screen HTML code to automatically append a standard `onkeydown` attribute to non-interactive elements with `onclick` attributes that activates click handlers on Enter or Space key press when they are keyboard-focused.

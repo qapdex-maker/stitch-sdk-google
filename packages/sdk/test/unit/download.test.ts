@@ -714,30 +714,41 @@ describe("DownloadAssetsHandler", () => {
 
     const $written = cheerio.load(writtenHtml);
 
-    // non-interactive div element with onclick should have got role="button" and tabindex="0"
+    // non-interactive div element with onclick should have got role="button", tabindex="0", and keyboard listener
     const divClick = $written("#div-click");
     expect(divClick.attr("role")).toBe("button");
     expect(divClick.attr("tabindex")).toBe("0");
+    expect(divClick.attr("onkeydown")).toBe(
+      "if (event.key === 'Enter' || event.key === ' ') { this.click(); event.preventDefault(); }",
+    );
 
-    // non-interactive span element with custom role should keep role and get tabindex="0"
+    // non-interactive span element with custom role should keep role and get tabindex="0" and keyboard listener
     const spanClick = $written("#span-click");
     expect(spanClick.attr("role")).toBe("link");
     expect(spanClick.attr("tabindex")).toBe("0");
+    expect(spanClick.attr("onkeydown")).toBe(
+      "if (event.key === 'Enter' || event.key === ' ') { this.click(); event.preventDefault(); }",
+    );
 
-    // non-interactive i element with custom tabindex should keep tabindex and get role="button"
+    // non-interactive i element with custom tabindex should keep tabindex and get role="button" and keyboard listener
     const iClick = $written("#i-click");
     expect(iClick.attr("role")).toBe("button");
     expect(iClick.attr("tabindex")).toBe("-1");
+    expect(iClick.attr("onkeydown")).toBe(
+      "if (event.key === 'Enter' || event.key === ' ') { this.click(); event.preventDefault(); }",
+    );
 
-    // Native interactive button should not have role or tabindex added
+    // Native interactive button should not have role, tabindex, or onkeydown added
     const btnClick = $written("#btn-click");
     expect(btnClick.attr("role")).toBeUndefined();
     expect(btnClick.attr("tabindex")).toBeUndefined();
+    expect(btnClick.attr("onkeydown")).toBeUndefined();
 
-    // Native interactive link should not have role or tabindex added
+    // Native interactive link should not have role, tabindex, or onkeydown added
     const aClick = $written("#a-click");
     expect(aClick.attr("role")).toBeUndefined();
     expect(aClick.attr("tabindex")).toBeUndefined();
+    expect(aClick.attr("onkeydown")).toBeUndefined();
   });
 
   it("prevents directory traversal", async () => {
