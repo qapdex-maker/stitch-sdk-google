@@ -70,7 +70,10 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
     try {
       const input = DownloadAssetsInputSchema.parse(rawInput);
       const { projectId, outputDir, fileMode, tempDir, assetsSubdir } = input;
-      const resolvedTempDir = tempDir ?? outputDir;
+      const resolvedOutputDir = path.resolve(outputDir);
+      const resolvedTempDir = tempDir
+        ? path.resolve(tempDir)
+        : resolvedOutputDir;
       // Guard assetsSubdir: strip any path separators — only use the basename.
       const safeSubdir = path.basename(assetsSubdir) || "assets";
 
@@ -88,8 +91,43 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         const screenId = screen.id || screen.name.split("/").pop();
         const screenSlug = slugify(screen.title, screenId, seenSlugs);
 
-        const screenDir = path.join(outputDir, screenSlug);
-        const screenAssetsDir = path.join(screenDir, safeSubdir);
+        const screenDir = path.resolve(resolvedOutputDir, screenSlug);
+
+        // SECURITY: Verify that the resolved screen directory is inside the output directory.
+        // This prevents path traversal attacks where a malicious screen name or ID is used.
+        const relativeScreenDir = path.relative(resolvedOutputDir, screenDir);
+        if (
+          relativeScreenDir.startsWith("..") ||
+          path.isAbsolute(relativeScreenDir)
+        ) {
+          return {
+            success: false,
+            error: {
+              code: "PATH_TRAVERSAL_ATTEMPT",
+              message: `Path traversal attempt detected in screen slug: ${screenSlug}`,
+              recoverable: false,
+            },
+          };
+        }
+
+        const screenAssetsDir = path.resolve(screenDir, safeSubdir);
+
+        // SECURITY: Verify that the resolved assets directory is inside the screen directory.
+        // This prevents path traversal attacks from safeSubdir/assetsSubdir.
+        const relativeAssetsDir = path.relative(screenDir, screenAssetsDir);
+        if (
+          relativeAssetsDir.startsWith("..") ||
+          path.isAbsolute(relativeAssetsDir)
+        ) {
+          return {
+            success: false,
+            error: {
+              code: "PATH_TRAVERSAL_ATTEMPT",
+              message: `Path traversal attempt detected in assets directory: ${safeSubdir}`,
+              recoverable: false,
+            },
+          };
+        }
 
         let htmlUrl = screen.htmlCode?.downloadUrl;
         if (!htmlUrl) {
@@ -529,7 +567,19 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
     const filename = sanitizedBase
       ? `${sanitizedBase}-${hash}${ext}`
       : `${hash}${ext}`;
-    const fullPath = path.join(assetsDir, filename);
+    const fullPath = path.resolve(assetsDir, filename);
+
+    // SECURITY: Ensure that the resolved asset file is inside the assets directory.
+    const relativeAssetPath = path.relative(assetsDir, fullPath);
+    if (
+      relativeAssetPath.startsWith("..") ||
+      path.isAbsolute(relativeAssetPath)
+    ) {
+      throw new Error(
+        `Path traversal attempt detected in asset filename: ${filename}`,
+      );
+    }
+
     const tempFilename = `.tmp-${crypto.randomBytes(8).toString("hex")}`;
     const tempFullPath = path.join(resolvedTempDir, tempFilename);
 
