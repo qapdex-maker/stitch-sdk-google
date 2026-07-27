@@ -751,6 +751,87 @@ describe("DownloadAssetsHandler", () => {
     expect(aClick.attr("onkeydown")).toBeUndefined();
   });
 
+  it("programmatically tags active navigation links with aria-current='page'", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<a id="lnk-active" class="nav-item active" href="/home">Home</a>' +
+      '<a id="lnk-current" class="current" href="/blog">Blog</a>' +
+      '<li class="selected"><a id="lnk-parent-selected" href="/contact">Contact</a></li>' +
+      '<a id="lnk-existing-current" class="active" aria-current="step" href="/dashboard">Dashboard</a>' +
+      '<a id="lnk-inactive" class="nav-item" href="/about">About</a>' +
+      '<a id="lnk-false-positive-1" class="interactive" href="/services">Services</a>' +
+      '<a id="lnk-false-positive-2" class="concurrent" href="/faq">FAQ</a>' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("lnk-active"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    const $written = cheerio.load(writtenHtml);
+
+    // Active link should get aria-current="page"
+    expect($written("#lnk-active").attr("aria-current")).toBe("page");
+
+    // Current link should get aria-current="page"
+    expect($written("#lnk-current").attr("aria-current")).toBe("page");
+
+    // Parent selected link should get aria-current="page"
+    expect($written("#lnk-parent-selected").attr("aria-current")).toBe("page");
+
+    // Existing aria-current should be preserved and not overridden
+    expect($written("#lnk-existing-current").attr("aria-current")).toBe("step");
+
+    // Inactive link should not get aria-current
+    expect($written("#lnk-inactive").attr("aria-current")).toBeUndefined();
+
+    // Partial matches / false positives should not trigger active state
+    expect(
+      $written("#lnk-false-positive-1").attr("aria-current"),
+    ).toBeUndefined();
+    expect(
+      $written("#lnk-false-positive-2").attr("aria-current"),
+    ).toBeUndefined();
+  });
+
   it("prevents directory traversal", async () => {
     const fs = await import("node:fs/promises");
     const path = await import("node:path");
