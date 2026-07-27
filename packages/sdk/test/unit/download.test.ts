@@ -884,6 +884,68 @@ describe("DownloadAssetsHandler", () => {
     }
   });
 
+  it("returns PATH_TRAVERSAL_ATTEMPT error if screenId contains path traversal and title is missing", async () => {
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [
+          {
+            id: "../../evil-id",
+          },
+        ],
+      }),
+    } as any;
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    const result = await handler.execute({
+      projectId: "p1",
+      outputDir: "/tmp/out",
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe("PATH_TRAVERSAL_ATTEMPT");
+      expect(result.error.message).toContain(
+        "Path traversal attempt detected in screen slug",
+      );
+    }
+  });
+
+  it("returns PATH_TRAVERSAL_ATTEMPT error if assetsSubdir resolves outside screen directory", async () => {
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [
+          {
+            id: "s1",
+            htmlCode: { downloadUrl: "http://fake/s1.html" },
+          },
+        ],
+      }),
+    } as any;
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      return Promise.resolve({
+        ok: true,
+        text: () => Promise.resolve("<html></html>"),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    const result = await handler.execute({
+      projectId: "p1",
+      outputDir: "/tmp/out",
+      assetsSubdir: "..",
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe("PATH_TRAVERSAL_ATTEMPT");
+      expect(result.error.message).toContain(
+        "Path traversal attempt detected in assets directory",
+      );
+    }
+  });
+
   it("returns failure if list_screens fails", async () => {
     const mockClient = {
       callTool: vi.fn().mockRejectedValue(new Error("API Error")),
