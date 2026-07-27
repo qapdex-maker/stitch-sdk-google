@@ -27,3 +27,8 @@
 
 **Learning:** In `EntityManager.resolve()`, segmenting resource names using `split("/")` causes intermediate array allocations on every cache miss. Re-implementing segment parsing using a single-pass `indexOf` and `substring` scan achieves the exact same behavioral characteristics (including edge cases such as leading, trailing, and double slashes) but runs significantly faster with zero intermediate array allocations.
 **Action:** Replace `split` operations in high-frequency parsing utilities with a manual cursor scan utilizing `indexOf` and `substring` when allocating arrays is not strictly necessary.
+
+## 2026-11-02 - Zero-Allocation Suffix Building via Direct Template Literals
+
+**Learning:** Constructing a suffix string by pushing string segments to an intermediate array and joining them via `.join("-")` causes unnecessary array allocation and string joining overhead. Using conditional template literals based on property presence eliminates array instantiation entirely.
+**Action:** Avoid allocating arrays and using `.join()` when assembling strings from a fixed set of conditional segments; instead, branch directly with conditional template literals.

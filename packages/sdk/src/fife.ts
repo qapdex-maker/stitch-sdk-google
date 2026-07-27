@@ -35,8 +35,20 @@ export interface FifeImageOptions {
  */
 export function buildFifeSuffix(options?: FifeImageOptions): string {
   if (!options) return "";
-  const parts: string[] = [];
-  if (options.width) parts.push(`w${options.width}`);
-  if (options.height) parts.push(`h${options.height}`);
-  return parts.length > 0 ? `=${parts.join("-")}` : "";
+  const { width, height } = options;
+
+  // OPTIMIZATION: Use direct conditional template-literal string concatenation
+  // based on the presence of width and height properties. This completely eliminates
+  // intermediate array allocation (e.g. `const parts = []`), element pushes, and
+  // the subsequent `.join("-")` call, preventing memory churn and allocation overhead.
+  if (width && height) {
+    return `=w${width}-h${height}`;
+  }
+  if (width) {
+    return `=w${width}`;
+  }
+  if (height) {
+    return `=h${height}`;
+  }
+  return "";
 }
