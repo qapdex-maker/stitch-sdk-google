@@ -142,6 +142,24 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           }
         });
 
+        // 5a. Active Navigation Link Accessibility: Ensure active/current navigation links are programmatically
+        // marked with aria-current="page" when visual indicators (e.g. classes matching "active", "current",
+        // or "selected" on the link itself or its direct parent) are present and the attribute is missing.
+        $("a").each((_, el) => {
+          if ($(el).attr("aria-current") === undefined) {
+            const classAttr = $(el).attr("class") || "";
+            const parentClassAttr = $(el).parent().attr("class") || "";
+            const activePattern = /\b(active|current|selected)\b/i;
+
+            if (
+              activePattern.test(classAttr) ||
+              activePattern.test(parentClassAttr)
+            ) {
+              $(el).attr("aria-current", "page");
+            }
+          }
+        });
+
         // 2. Decorative Icon Accessibility: Mark SVGs inside interactive elements (buttons/links)
         // that already have an accessible label (has an `aria-label` or non-empty text content)
         // with `aria-hidden="true"`. This prevents screen readers from redundantly announcing

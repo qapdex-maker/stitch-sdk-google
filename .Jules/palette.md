@@ -31,3 +31,8 @@ This journal contains only critical UX and accessibility learnings. Routine upda
 
 **Learning:** Non-interactive elements (like `div`, `span`, `i`, `p`) having `onclick` attributes are keyboard-focusable and recognized by screen readers when given `role="button"` and `tabindex="0"`, but they cannot be activated via standard keyboard navigation (using the Enter or Space key) without explicit keyboard event listeners. To comply with WCAG 2.1.1 (Keyboard), we must programmatically bind keydown events to automatically trigger the `click()` event on these elements.
 **Action:** Post-process downloaded screen HTML code to automatically append a standard `onkeydown` attribute to non-interactive elements with `onclick` attributes that activates click handlers on Enter or Space key press when they are keyboard-focused.
+
+## 2026-04-06 - [Semantic Active Navigation Mapping for Downloaded Screens]
+
+**Learning:** Downloaded or dynamically-generated prototypes and screens frequently denote visual active or current navigation link states purely through CSS styling (e.g., classes matching "active", "current", or "selected"). Without explicit semantic markers, non-visual users are completely unaware which link or tab represents the currently active section or page.
+**Action:** Programmatically scan all anchors in post-processing, and if active class indicators are detected on either the link itself or its parent (matching boundary-checked words 'active', 'current', or 'selected'), and `aria-current` is missing, inject `aria-current="page"` to cleanly convey this navigational context to assistive technologies.
