@@ -4,7 +4,7 @@ DO NOT EDIT — changes will be overwritten.
 
 Source: tools-manifest.json (sha256:f20f91d571a1...)
         domain-map.json     (sha256:715639788724...)
-Generated: 2026-07-27T00:38:53.159Z
+Generated: 2026-07-28T01:00:30.737Z
  */
 import { type StitchToolClient } from "../../src/client.js";
 import { StitchError } from "../../src/spec/errors.js";

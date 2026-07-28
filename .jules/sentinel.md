@@ -5,3 +5,11 @@
 **Learning:** Path traversal vulnerabilities can easily arise in utility functions (like `slugify`) if fallback behavior bypasses typical sanitization rules. Validating resolved paths against a base output directory using `path.relative` is the most reliable, cross-platform defense-in-depth shield to catch any unexpected traversal.
 
 **Prevention:** Always resolve paths absolutely (`path.resolve`) and verify that they reside inside the expected base directory using `path.relative`. Reject any paths where the relative path starts with `..` or is absolute.
+
+## 2026-03-05 - Path Traversal Protection in Design System Export Handler
+
+**Vulnerability:** During design system export in `DownloadAssetsHandler`, if a design system lacked a `displayName`, the handler fell back to taking the last segment of the design system `name` via `.split("/").pop()`. If the design system name contained directory traversal segments (e.g., `assets/..`), the resolved directory path would be outside the designated output directory, enabling path traversal.
+
+**Learning:** Secondary or peripheral export tasks (like design systems) are easily overlooked during security audits of primary tasks. Every file-writing path derived from server-returned names must be validated, regardless of whether it's considered secondary or is wrapped in try-catch blocks.
+
+**Prevention:** Apply absolute path resolution and relative path prefix validation on every directory created and file written. If any directory resolves outside the base output directory, immediately abort with a path traversal error.

@@ -1231,6 +1231,47 @@ describe("DownloadAssetsHandler", () => {
     );
   });
 
+  it("returns PATH_TRAVERSAL_ATTEMPT if design system name resolves outside output directory", async () => {
+    const mockClient = { callTool: vi.fn() } as any;
+    mockClient.callTool.mockImplementation(
+      (tool: string, args: Record<string, unknown>) => {
+        if (tool === "list_screens") {
+          return Promise.resolve({ screens: [] });
+        }
+        if (tool === "list_design_systems") {
+          return Promise.resolve({
+            ok: true,
+            designSystems: [
+              {
+                name: "assets/..",
+                designSystem: {
+                  theme: {
+                    designMd: "# Evilly Traversed Design",
+                  },
+                },
+              },
+            ],
+          });
+        }
+        return Promise.resolve({ ok: true });
+      },
+    );
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    const result = await handler.execute({
+      projectId: "p1",
+      outputDir: "/tmp/out",
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe("PATH_TRAVERSAL_ATTEMPT");
+      expect(result.error.message).toContain(
+        "Path traversal attempt detected in design system directory",
+      );
+    }
+  });
+
   it("returns a detailed trace of downloaded screens in result", async () => {
     const mockClient = {
       callTool: vi.fn().mockResolvedValue({
