@@ -32,3 +32,8 @@
 
 **Learning:** Constructing a suffix string by pushing string segments to an intermediate array and joining them via `.join("-")` causes unnecessary array allocation and string joining overhead. Using conditional template literals based on property presence eliminates array instantiation entirely.
 **Action:** Avoid allocating arrays and using `.join()` when assembling strings from a fixed set of conditional segments; instead, branch directly with conditional template literals.
+
+## 2026-11-06 - Consolidating Multiple Cheerio Element Traversals and Wrappings
+
+**Learning:** In the assets download handler (`DownloadAssetsHandler`), performing multiple separate Cheerio DOM queries/traversals on overlapping tags (such as querying `"img"` twice and `"button, a"`, `"a"`, and `"a[target='_blank']"` separately) triggers heavy execution overhead due to repeated selector scanning and wrapping elements with the jQuery wrapper. Consolidating overlapping selectors into single-pass queries (e.g. one for `"img"` and one for `"button, a"`) and using the fast, native node tag name property (`(el as any).name === "a"`) to branch logic delivers major speedups and cuts object allocations.
+**Action:** Combine separate element traversals that target the same or overlapping DOM elements into a single-pass traversal. Use the native `name` or `tagName` properties on raw elements instead of multiple Cheerio wrapped checks to further reduce overhead.
