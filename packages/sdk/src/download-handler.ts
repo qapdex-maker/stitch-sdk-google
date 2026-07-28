@@ -490,9 +490,27 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
                 .toLowerCase()
                 .replace(/[^a-z0-9]+/g, "_")
                 .replace(/^_+|_+$/g, "")
-            : ds.name.split("/").pop();
+            : ds.name?.split("/").pop() || "design_system";
 
-          const dsDir = path.join(outputDir, dsName);
+          const dsDir = path.resolve(resolvedOutputDir, dsName);
+
+          // SECURITY: Verify that the resolved design system directory is inside the output directory.
+          // This prevents path traversal attacks where a malicious design system name is used.
+          const relativeDsDir = path.relative(resolvedOutputDir, dsDir);
+          if (
+            relativeDsDir.startsWith("..") ||
+            path.isAbsolute(relativeDsDir)
+          ) {
+            return {
+              success: false,
+              error: {
+                code: "PATH_TRAVERSAL_ATTEMPT",
+                message: `Path traversal attempt detected in design system directory: ${dsName}`,
+                recoverable: false,
+              },
+            };
+          }
+
           await fs.mkdir(dsDir, { recursive: true });
 
           const dsPath = path.join(dsDir, "DESIGN.md");
