@@ -150,70 +150,119 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         const html = await fetch(htmlUrl).then((r) => r.text());
         const $ = cheerio.load(html);
 
+        const assetTasks: (() => Promise<void>)[] = [];
+
+        // OPTIMIZATION: Combine the image loops to perform both alt attribution and asset task collection
+        // in a single pass over "img" tags, reducing DOM traversals and wrapping overhead.
         // Ensure all img tags have an alt attribute for accessibility.
         // If an img tag is missing the alt attribute entirely, screen readers will read
         // out the raw filename (which after rewriting is a cryptic hash like "banner-a1b2c3d4.png").
         // Setting an empty alt="" tells screen readers to gracefully ignore decorative images.
         // If there is a title attribute, fallback to title instead of an empty string.
         $("img").each((_, el) => {
-          if ($(el).attr("alt") === undefined) {
-            const title = $(el).attr("title");
-            $(el).attr("alt", title || "");
+          const $el = $(el);
+          if ($el.attr("alt") === undefined) {
+            const title = $el.attr("title");
+            $el.attr("alt", title || "");
+          }
+
+          const src = $el.attr("src");
+          if (src && src.startsWith("http")) {
+            assetTasks.push(() =>
+              this._downloadAndRewrite(
+                $,
+                el,
+                "src",
+                src,
+                screenAssetsDir,
+                safeSubdir,
+                resolvedTempDir,
+                fileMode,
+              ),
+            );
           }
         });
 
-        // 1. Interactive Elements Accessibility: If a button or link has a `title` attribute
-        // but lacks an `aria-label`, populate `aria-label` with the `title` text. This ensures
-        // screen readers read a descriptive label instead of silence or cryptic child elements.
-        // Also, if the button/link lacks an aria-label and title but has an inner SVG with a <title>,
-        // extract it and use it as the aria-label.
+        // OPTIMIZATION: Merge "button, a", "a", and "a[target='_blank']" loops into a single traversal.
+        // We use the zero-allocation tag-name property check `(el as any).name === "a"` to safely split
+        // behavioral logic, saving multiple expensive DOM queries and element wrapping.
         $("button, a").each((_, el) => {
-          const title = $(el).attr("title");
-          const ariaLabel = $(el).attr("aria-label");
+          const $el = $(el);
+          const isLink = (el as any).name === "a";
+
+          // 1. Interactive Elements Accessibility: If a button or link has a `title` attribute
+          // but lacks an `aria-label`, populate `aria-label` with the `title` text. This ensures
+          // screen readers read a descriptive label instead of silence or cryptic child elements.
+          // Also, if the button/link lacks an aria-label and title but has an inner SVG with a <title>,
+          // extract it and use it as the aria-label.
+          const title = $el.attr("title");
+          let ariaLabel = $el.attr("aria-label");
           if (title && !ariaLabel) {
-            $(el).attr("aria-label", title);
+            $el.attr("aria-label", title);
+            ariaLabel = title;
           } else if (!title && !ariaLabel) {
-            const svgTitle = $(el).find("svg title").first().text().trim();
+            const svgTitle = $el.find("svg title").first().text().trim();
             if (svgTitle) {
-              $(el).attr("aria-label", svgTitle);
+              $el.attr("aria-label", svgTitle);
+              ariaLabel = svgTitle;
             }
           }
-        });
 
-        // 5a. Active Navigation Link Accessibility: Ensure active/current navigation links are programmatically
-        // marked with aria-current="page" when visual indicators (e.g. classes matching "active", "current",
-        // or "selected" on the link itself or its direct parent) are present and the attribute is missing.
-        $("a").each((_, el) => {
-          if ($(el).attr("aria-current") === undefined) {
-            const classAttr = $(el).attr("class") || "";
-            const parentClassAttr = $(el).parent().attr("class") || "";
-            const activePattern = /\b(active|current|selected)\b/i;
+          if (isLink) {
+            // 5a. Active Navigation Link Accessibility: Ensure active/current navigation links are programmatically
+            // marked with aria-current="page" when visual indicators (e.g. classes matching "active", "current",
+            // or "selected" on the link itself or its direct parent) are present and the attribute is missing.
+            if ($el.attr("aria-current") === undefined) {
+              const classAttr = $el.attr("class") || "";
+              const parentClassAttr = $el.parent().attr("class") || "";
+              const activePattern = /\b(active|current|selected)\b/i;
 
-            if (
-              activePattern.test(classAttr) ||
-              activePattern.test(parentClassAttr)
-            ) {
-              $(el).attr("aria-current", "page");
+              if (
+                activePattern.test(classAttr) ||
+                activePattern.test(parentClassAttr)
+              ) {
+                $el.attr("aria-current", "page");
+              }
             }
-          }
-        });
 
-        // 2. Decorative Icon Accessibility: Mark SVGs inside interactive elements (buttons/links)
-        // that already have an accessible label (has an `aria-label` or non-empty text content)
-        // with `aria-hidden="true"`. This prevents screen readers from redundantly announcing
-        // raw SVG paths or graphics when a meaningful label is already present.
-        $("button, a").each((_, parentEl) => {
-          const hasLabel =
-            $(parentEl).attr("aria-label") ||
-            $(parentEl).text().trim().length > 0;
-          if (hasLabel) {
-            $(parentEl)
-              .find("svg")
-              .each((_, svgEl) => {
-                if ($(svgEl).attr("aria-hidden") === undefined) {
-                  $(svgEl).attr("aria-hidden", "true");
+            // 5. Links Opening in New Tabs (Accessibility & Security): Ensure links with target="_blank"
+            // have safe security attributes (noopener and noreferrer) and explicitly announce to screen reader
+            // users that they open in a new tab/window by appending " (opens in a new tab)" to the aria-label.
+            if ($el.attr("target") === "_blank") {
+              // Security: set rel="noopener noreferrer" safely
+              const currentRel = $el.attr("rel") || "";
+              const relParts = currentRel.split(/\s+/).filter(Boolean);
+              if (!relParts.includes("noopener")) relParts.push("noopener");
+              if (!relParts.includes("noreferrer")) relParts.push("noreferrer");
+              $el.attr("rel", relParts.join(" "));
+
+              // Accessibility: append " (opens in a new tab)" to aria-label if we have some accessible name
+              const accessibleName = ariaLabel || title || $el.text().trim();
+              if (accessibleName) {
+                const warningText = "(opens in a new tab)";
+                if (!accessibleName.includes(warningText)) {
+                  if (ariaLabel) {
+                    $el.attr("aria-label", `${ariaLabel} ${warningText}`);
+                  } else {
+                    $el.attr("aria-label", `${accessibleName} ${warningText}`);
+                  }
                 }
-              });
+              }
+            }
+          }
+
+          // 2. Decorative Icon Accessibility: Mark SVGs inside interactive elements (buttons/links)
+          // that already have an accessible label (has an `aria-label` or non-empty text content)
+          // with `aria-hidden="true"`. This prevents screen readers from redundantly announcing
+          // raw SVG paths or graphics when a meaningful label is already present.
+          const hasLabel = ariaLabel || $el.text().trim().length > 0;
+          if (hasLabel) {
+            $el.find("svg").each((_, svgEl) => {
+              const $svg = $(svgEl);
+              if ($svg.attr("aria-hidden") === undefined) {
+                $svg.attr("aria-hidden", "true");
+              }
+            });
           }
         });
 
@@ -337,35 +386,6 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           htmlEl.attr("lang", "en");
         }
 
-        // 5. Links Opening in New Tabs (Accessibility & Security): Ensure links with target="_blank"
-        // have safe security attributes (noopener and noreferrer) and explicitly announce to screen reader
-        // users that they open in a new tab/window by appending " (opens in a new tab)" to the aria-label.
-        $('a[target="_blank"]').each((_, el) => {
-          // Security: set rel="noopener noreferrer" safely
-          const currentRel = $(el).attr("rel") || "";
-          const relParts = currentRel.split(/\s+/).filter(Boolean);
-          if (!relParts.includes("noopener")) relParts.push("noopener");
-          if (!relParts.includes("noreferrer")) relParts.push("noreferrer");
-          $(el).attr("rel", relParts.join(" "));
-
-          // Accessibility: append " (opens in a new tab)" to aria-label if we have some accessible name
-          let accessibleName =
-            $(el).attr("aria-label") ||
-            $(el).attr("title") ||
-            $(el).text().trim();
-          if (accessibleName) {
-            const warningText = "(opens in a new tab)";
-            if (!accessibleName.includes(warningText)) {
-              const currentAriaLabel = $(el).attr("aria-label");
-              if (currentAriaLabel) {
-                $(el).attr("aria-label", `${currentAriaLabel} ${warningText}`);
-              } else {
-                $(el).attr("aria-label", `${accessibleName} ${warningText}`);
-              }
-            }
-          }
-        });
-
         // 6. Custom Clickable Element Accessibility: Ensure non-interactive elements (like div, span, i, p)
         // with `onclick` attributes are given `role="button"` and `tabindex="0"` to make them keyboard and
         // screen-reader accessible.
@@ -385,26 +405,6 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
                 "if (event.key === 'Enter' || event.key === ' ') { this.click(); event.preventDefault(); }",
               );
             }
-          }
-        });
-
-        const assetTasks: (() => Promise<void>)[] = [];
-
-        $("img").each((_, el) => {
-          const src = $(el).attr("src");
-          if (src && src.startsWith("http")) {
-            assetTasks.push(() =>
-              this._downloadAndRewrite(
-                $,
-                el,
-                "src",
-                src,
-                screenAssetsDir,
-                safeSubdir,
-                resolvedTempDir,
-                fileMode,
-              ),
-            );
           }
         });
 
