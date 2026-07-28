@@ -36,3 +36,8 @@ This journal contains only critical UX and accessibility learnings. Routine upda
 
 **Learning:** Downloaded or dynamically-generated prototypes and screens frequently denote visual active or current navigation link states purely through CSS styling (e.g., classes matching "active", "current", or "selected"). Without explicit semantic markers, non-visual users are completely unaware which link or tab represents the currently active section or page.
 **Action:** Programmatically scan all anchors in post-processing, and if active class indicators are detected on either the link itself or its parent (matching boundary-checked words 'active', 'current', or 'selected'), and `aria-current` is missing, inject `aria-current="page"` to cleanly convey this navigational context to assistive technologies.
+
+## 2026-04-07 - [Automatic Search Landmark Association for Enhanced Page Navigation]
+
+**Learning:** Search elements and sections are critical landmarks for keyboard and screen-reader navigation. If a search input exists but its parent container (form, div, or section) lacks a semantic role, screen reader users cannot quickly jump to or identify the search landmark, forcing them to exhaustively scan the entire page.
+**Action:** Programmatically scan all inputs, and if a search input is detected (by checking type, id, name, placeholder, title, or aria-label for 'search'), find its closest form, div, or section container. If the container lacks a `role` attribute, inject `role="search"` to establish an accessible search landmark.

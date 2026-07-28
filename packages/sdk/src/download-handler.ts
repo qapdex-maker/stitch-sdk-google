@@ -329,6 +329,37 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
               $(el).attr("aria-required", "true");
             }
           }
+
+          // 3c. Automatic Search Landmark Association (role="search"): Improve screen-reader
+          // navigation by tagging containers with role="search" when search fields are present.
+          if ($(el).is("input")) {
+            const inputType = $(el).attr("type") || "text";
+            const inputId = $(el).attr("id") || "";
+            const inputName = $(el).attr("name") || "";
+            const inputClass = $(el).attr("class") || "";
+            const placeholder = $(el).attr("placeholder") || "";
+            const title = $(el).attr("title") || "";
+            const ariaLabel = $(el).attr("aria-label") || "";
+
+            const isSearch =
+              inputType === "search" ||
+              /search/i.test(inputId) ||
+              /search/i.test(inputName) ||
+              /search/i.test(inputClass) ||
+              /search/i.test(placeholder) ||
+              /search/i.test(title) ||
+              /search/i.test(ariaLabel);
+
+            if (isSearch) {
+              const searchContainer = $(el).closest("form, div, section");
+              if (
+                searchContainer.length > 0 &&
+                searchContainer.attr("role") === undefined
+              ) {
+                searchContainer.attr("role", "search");
+              }
+            }
+          }
         });
 
         // 4. Document Language Accessibility: Ensure the <html> element has a lang attribute (defaults to "en").
