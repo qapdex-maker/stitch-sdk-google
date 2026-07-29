@@ -832,6 +832,78 @@ describe("DownloadAssetsHandler", () => {
     ).toBeUndefined();
   });
 
+  it("programmatically tags search input containers with role='search'", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<form id="frm1"><input id="search-input" type="search"></form>' +
+      '<div id="div1"><input id="search-text-input" placeholder="Search site..."></div>' +
+      '<section id="sec1" role="region"><input id="search-via-title" title="Search books"></section>' +
+      '<div id="div-existing" role="none"><input id="search-existing" name="search"></div>' +
+      '<form id="frm-non-search"><input id="normal-text-input" type="text" placeholder="Username"></form>' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("search-input"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    const $written = cheerio.load(writtenHtml);
+
+    // Form container enclosing type="search" should get role="search"
+    expect($written("#frm1").attr("role")).toBe("search");
+
+    // Div container enclosing input with placeholder matching /search/i should get role="search"
+    expect($written("#div1").attr("role")).toBe("search");
+
+    // Section container enclosing input with title matching /search/i should get role="search"
+    // Since Section container had role="region", it should be preserved and not overridden
+    expect($written("#sec1").attr("role")).toBe("region");
+
+    // Div container enclosing input with name matching /search/i should be preserved if role exists
+    expect($written("#div-existing").attr("role")).toBe("none");
+
+    // Form container with a standard non-search field should not get role="search"
+    expect($written("#frm-non-search").attr("role")).toBeUndefined();
+  });
+
   it("prevents directory traversal", async () => {
     const fs = await import("node:fs/promises");
     const path = await import("node:path");
