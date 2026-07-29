@@ -89,7 +89,10 @@ function collectRefTargets(
 
   if (Array.isArray(obj)) {
     for (const item of obj) {
-      collectRefTargets(item, refs);
+      // OPTIMIZATION: Avoid redundant function call overhead for primitive elements
+      if (typeof item === "object" && item !== null) {
+        collectRefTargets(item, refs);
+      }
     }
     return refs;
   }
@@ -103,7 +106,11 @@ function collectRefTargets(
   // Iterate properties using a simple for-in loop to avoid allocating values/keys arrays.
   for (const key in record) {
     if (Object.prototype.hasOwnProperty.call(record, key)) {
-      collectRefTargets(record[key], refs);
+      const val = record[key];
+      // OPTIMIZATION: Avoid redundant function call overhead for primitive properties
+      if (typeof val === "object" && val !== null) {
+        collectRefTargets(val, refs);
+      }
     }
   }
 
