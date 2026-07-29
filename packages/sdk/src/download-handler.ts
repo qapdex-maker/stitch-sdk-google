@@ -275,6 +275,34 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         let labelCounter = 1;
         let descCounter = 1;
         $("input, textarea, select").each((_, el) => {
+          // 3c. Search Input Landmark Accessibility: Establish search landmarks for search controls when missing.
+          const nameAttr = $(el).attr("name") || "";
+          const idAttr = $(el).attr("id") || "";
+          const classAttr = $(el).attr("class") || "";
+          const placeholderAttr = $(el).attr("placeholder") || "";
+          const typeAttr = $(el).attr("type") || "";
+
+          const isSearchInput =
+            typeAttr.toLowerCase() === "search" ||
+            /search/i.test(nameAttr) ||
+            /search/i.test(idAttr) ||
+            /search/i.test(classAttr) ||
+            /search/i.test(placeholderAttr);
+
+          if (isSearchInput) {
+            const hasExistingSearchLandmark =
+              $(el).closest('[role="search"]').length > 0;
+            if (!hasExistingSearchLandmark) {
+              const container = $(el).closest("form, div, section");
+              if (
+                container.length > 0 &&
+                container.attr("role") === undefined
+              ) {
+                container.attr("role", "search");
+              }
+            }
+          }
+
           const type = $(el).attr("type");
           const id = $(el).attr("id");
           const hasAriaLabel = $(el).attr("aria-label") !== undefined;

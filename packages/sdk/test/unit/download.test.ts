@@ -751,6 +751,77 @@ describe("DownloadAssetsHandler", () => {
     expect(aClick.attr("onkeydown")).toBeUndefined();
   });
 
+  it("programmatically tags search input container with role='search' when missing", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<form id="form-search"><input type="search" id="inp-search-1"></form>' +
+      '<div id="div-search"><input id="inp-search-2" name="search_query"></div>' +
+      '<section id="sec-search"><input id="inp-search-3" placeholder="Search blog..."></section>' +
+      '<form id="form-ignored" role="none"><input type="search" id="inp-search-4"></form>' +
+      '<form id="form-has-landmark" role="search"><div id="div-nested"><input type="search" id="inp-search-5"></div></form>' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("form-search"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    const $written = cheerio.load(writtenHtml);
+
+    // Form search should get role="search"
+    expect($written("#form-search").attr("role")).toBe("search");
+
+    // Div search should get role="search"
+    expect($written("#div-search").attr("role")).toBe("search");
+
+    // Section search should get role="search"
+    expect($written("#sec-search").attr("role")).toBe("search");
+
+    // Form ignored has pre-existing role="none", should NOT get overridden
+    expect($written("#form-ignored").attr("role")).toBe("none");
+
+    // Div nested inside form-has-landmark should NOT get role="search" because it already has a search landmark ancestor
+    expect($written("#div-nested").attr("role")).toBeUndefined();
+  });
+
   it("programmatically tags active navigation links with aria-current='page'", async () => {
     const fs = await import("node:fs/promises");
     vi.mocked(fs.writeFile).mockClear();
