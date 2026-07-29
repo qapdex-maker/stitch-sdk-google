@@ -13,3 +13,11 @@
 **Learning:** Secondary or peripheral export tasks (like design systems) are easily overlooked during security audits of primary tasks. Every file-writing path derived from server-returned names must be validated, regardless of whether it's considered secondary or is wrapped in try-catch blocks.
 
 **Prevention:** Apply absolute path resolution and relative path prefix validation on every directory created and file written. If any directory resolves outside the base output directory, immediately abort with a path traversal error.
+
+## 2026-03-10 - Path Traversal Protection in tempDir and outputDir virtual-tool validation
+
+**Vulnerability:** During asset download, a client could specify a `tempDir` containing path traversal patterns (like `../../etc`), causing `DownloadAssetsHandler` to write intermediate files to sensitive directories outside the target output folder. Furthermore, the virtual tool `download_assets` accepted any absolute `outputDir`, allowing untrusted agent-driven tool executions to write files to arbitrary locations outside the active workspace directory.
+
+**Learning:** Secondary absolute parameters like `tempDir` or `outputDir` in client/agent-exposed tools are high-risk vectors. Path splits using `path.sep` can be bypassed on Windows using forward slashes (`/`), so platform-neutral regex splitting `tempDir.split(/[\/\\]/)` should be used instead.
+
+**Prevention:** Ensure `tempDir` does not escape `process.cwd()` when relative, and doesn't contain platform-neutral traversal segments when absolute. Limit agent-driven `outputDir` tool targets strictly to subfolders of the current working directory (`process.cwd()`).
