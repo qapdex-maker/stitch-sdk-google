@@ -41,7 +41,12 @@ function cleanSchema(schema: any): any {
       const arr: any[] = [];
       seen.set(node, arr);
       for (const val of node) {
-        arr.push(stripAndResolve(val, seen));
+        // OPTIMIZATION: Avoid redundant recursive calls for primitive elements
+        if (val && typeof val === "object") {
+          arr.push(stripAndResolve(val, seen));
+        } else {
+          arr.push(val);
+        }
       }
       return arr;
     }
@@ -64,7 +69,13 @@ function cleanSchema(schema: any): any {
               k !== "deprecated" &&
               !k.startsWith("x-google-")
             ) {
-              resolved[k] = stripAndResolve(node[k], seen);
+              const val = node[k];
+              // OPTIMIZATION: Avoid redundant recursive calls for primitive properties
+              if (val && typeof val === "object") {
+                resolved[k] = stripAndResolve(val, seen);
+              } else {
+                resolved[k] = val;
+              }
             }
           }
         }
@@ -86,7 +97,13 @@ function cleanSchema(schema: any): any {
         ) {
           continue;
         }
-        result[key] = stripAndResolve(node[key], seen);
+        const val = node[key];
+        // OPTIMIZATION: Avoid redundant recursive calls for primitive properties
+        if (val && typeof val === "object") {
+          result[key] = stripAndResolve(val, seen);
+        } else {
+          result[key] = val;
+        }
       }
     }
     return result;
