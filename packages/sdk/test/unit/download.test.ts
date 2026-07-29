@@ -946,6 +946,62 @@ describe("DownloadAssetsHandler", () => {
     }
   });
 
+  it("returns PATH_TRAVERSAL_ATTEMPT error if tempDir contains path traversal", async () => {
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [
+          {
+            id: "s1",
+            htmlCode: { downloadUrl: "http://fake/s1.html" },
+          },
+        ],
+      }),
+    } as any;
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    const result = await handler.execute({
+      projectId: "p1",
+      outputDir: "/tmp/out",
+      tempDir: "../../etc",
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe("PATH_TRAVERSAL_ATTEMPT");
+      expect(result.error.message).toContain(
+        "Path traversal attempt detected in tempDir",
+      );
+    }
+  });
+
+  it("returns PATH_TRAVERSAL_ATTEMPT error if absolute tempDir contains path traversal", async () => {
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [
+          {
+            id: "s1",
+            htmlCode: { downloadUrl: "http://fake/s1.html" },
+          },
+        ],
+      }),
+    } as any;
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    const result = await handler.execute({
+      projectId: "p1",
+      outputDir: "/tmp/out",
+      tempDir: "/tmp/../../etc",
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe("PATH_TRAVERSAL_ATTEMPT");
+      expect(result.error.message).toContain(
+        "Path traversal attempt detected in tempDir",
+      );
+    }
+  });
+
   it("returns failure if list_screens fails", async () => {
     const mockClient = {
       callTool: vi.fn().mockRejectedValue(new Error("API Error")),

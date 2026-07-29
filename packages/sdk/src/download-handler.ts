@@ -14,6 +14,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import * as os from "node:os";
 import * as crypto from "node:crypto";
 import * as cheerio from "cheerio";
 import type { AnyNode } from "domhandler";
@@ -74,6 +75,39 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
       const resolvedTempDir = tempDir
         ? path.resolve(tempDir)
         : resolvedOutputDir;
+
+      if (tempDir) {
+        const isAbsolute = path.isAbsolute(tempDir);
+        if (!isAbsolute) {
+          const resolvedCwd = path.resolve(process.cwd());
+          const relativeToCwd = path.relative(resolvedCwd, resolvedTempDir);
+          if (
+            relativeToCwd.startsWith("..") ||
+            path.isAbsolute(relativeToCwd)
+          ) {
+            return {
+              success: false,
+              error: {
+                code: "PATH_TRAVERSAL_ATTEMPT",
+                message: `Path traversal attempt detected in tempDir: ${tempDir}`,
+                recoverable: false,
+              },
+            };
+          }
+        } else {
+          if (tempDir.split(/[\/\\]/).includes("..")) {
+            return {
+              success: false,
+              error: {
+                code: "PATH_TRAVERSAL_ATTEMPT",
+                message: `Path traversal attempt detected in tempDir: ${tempDir}`,
+                recoverable: false,
+              },
+            };
+          }
+        }
+      }
+
       // Guard assetsSubdir: strip any path separators — only use the basename.
       const safeSubdir = path.basename(assetsSubdir) || "assets";
 

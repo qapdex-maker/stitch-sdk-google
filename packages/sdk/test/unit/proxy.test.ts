@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import * as path from "node:path";
 import { registerListToolsHandler } from "../../src/proxy/handlers/listTools.js";
 import { registerCallToolHandler } from "../../src/proxy/handlers/callTool.js";
 import { downloadAssetsTool } from "../../src/proxy/virtual-tools.js";
@@ -89,6 +90,24 @@ describe("Proxy Handlers", () => {
     const handler = handlers.get(CallToolRequestSchema);
     expect(handler).toBeDefined();
 
+    const safeOutputDir = path.join(process.cwd(), "test-output");
+    const request = {
+      params: {
+        name: "download_assets",
+        arguments: { projectId: "p1", outputDir: safeOutputDir },
+      },
+    };
+
+    const result = await handler(request);
+    expect(result.content[0].text).toContain(safeOutputDir);
+  });
+
+  it("should prevent virtual tool call with path traversal in outputDir", async () => {
+    registerCallToolHandler(mockServer, mockCtx);
+
+    const handler = handlers.get(CallToolRequestSchema);
+    expect(handler).toBeDefined();
+
     const request = {
       params: {
         name: "download_assets",
@@ -97,7 +116,8 @@ describe("Proxy Handlers", () => {
     };
 
     const result = await handler(request);
-    expect(result.content[0].text).toContain("/tmp/out");
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Path traversal attempt detected");
   });
 
   it("should forward non-virtual tool call", async () => {

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import * as path from "node:path";
 import { Project } from "../project-ext.js";
 import { VirtualToolDefinition } from "../spec/client.js";
 import { forwardToStitch } from "./client.js";
@@ -35,6 +36,21 @@ export const downloadAssetsTool: VirtualToolDefinition = {
   },
   execute: async (client, args) => {
     const { projectId, outputDir } = args;
+
+    // SECURITY: Verify that outputDir is inside the current working directory to prevent arbitrary file writes.
+    const resolvedCwd = path.resolve(process.cwd());
+    const resolvedOutputDir = path.resolve(outputDir);
+    const relativeOutputDir = path.relative(resolvedCwd, resolvedOutputDir);
+
+    if (
+      relativeOutputDir.startsWith("..") ||
+      path.isAbsolute(relativeOutputDir)
+    ) {
+      throw new Error(
+        `Path traversal attempt detected: outputDir must be inside the current working directory.`,
+      );
+    }
+
     const project = createProject(projectId, client);
     await project.downloadAssets(outputDir);
     return {
