@@ -441,6 +441,83 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
             }
           }
 
+          // 3d. Form Autocomplete Accessibility (WCAG 2.1 1.3.5): Automatically map form controls
+          // to standard autocomplete fields if missing, to assist users with cognitive and motor disabilities.
+          const isInputOrTextarea = $(el).is("input, textarea");
+          const hasAutocomplete = $(el).attr("autocomplete") !== undefined;
+
+          if (isInputOrTextarea && !hasAutocomplete) {
+            let infoToInspect = "";
+
+            const parentLabel = $(el).closest("label");
+            if (parentLabel.length > 0) {
+              infoToInspect += " " + parentLabel.text();
+            }
+            const currentId = $(el).attr("id");
+            if (currentId) {
+              $(`label[for="${currentId}"]`).each((_, lbl) => {
+                infoToInspect += " " + $(lbl).text();
+              });
+            }
+
+            const placeholder = $(el).attr("placeholder");
+            if (placeholder) {
+              infoToInspect += " " + placeholder;
+            }
+            const title = $(el).attr("title");
+            if (title) {
+              infoToInspect += " " + title;
+            }
+            const ariaLabel = $(el).attr("aria-label");
+            if (ariaLabel) {
+              infoToInspect += " " + ariaLabel;
+            }
+            const name = $(el).attr("name");
+            if (name) {
+              infoToInspect += " " + name;
+            }
+            const idVal = $(el).attr("id");
+            if (idVal) {
+              infoToInspect += " " + idVal;
+            }
+
+            const typeVal = ($(el).attr("type") || "text").toLowerCase();
+            const inspectStr = infoToInspect.toLowerCase();
+
+            if (typeVal === "email" || /email/i.test(inspectStr)) {
+              $(el).attr("autocomplete", "email");
+            } else if (typeVal === "password" || /password/i.test(inspectStr)) {
+              if (/new|confirm|signup/i.test(inspectStr)) {
+                $(el).attr("autocomplete", "new-password");
+              } else {
+                $(el).attr("autocomplete", "current-password");
+              }
+            } else if (/username|user_name/i.test(inspectStr)) {
+              $(el).attr("autocomplete", "username");
+            } else if (
+              /first_name|firstname|given_name|givenname/i.test(inspectStr)
+            ) {
+              $(el).attr("autocomplete", "given-name");
+            } else if (
+              /last_name|lastname|surname|family_name|familyname/i.test(
+                inspectStr,
+              )
+            ) {
+              $(el).attr("autocomplete", "family-name");
+            } else if (/fullname|full_name\b|\bname\b/i.test(inspectStr)) {
+              $(el).attr("autocomplete", "name");
+            } else if (
+              typeVal === "tel" ||
+              /phone|telephone|mobile|tel\b/i.test(inspectStr)
+            ) {
+              $(el).attr("autocomplete", "tel");
+            } else if (/zip|postal|postcode/i.test(inspectStr)) {
+              $(el).attr("autocomplete", "postal-code");
+            } else if (/country/i.test(inspectStr)) {
+              $(el).attr("autocomplete", "country");
+            }
+          }
+
           // 3c. Automatic Search Landmark Association (role="search"): Improve screen-reader
           // navigation by tagging containers with role="search" when search fields are present.
           if ($(el).is("input")) {
@@ -462,12 +539,16 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
               /search/i.test(ariaLabel);
 
             if (isSearch) {
-              const searchContainer = $(el).closest("form, div, section");
-              if (
-                searchContainer.length > 0 &&
-                searchContainer.attr("role") === undefined
-              ) {
-                searchContainer.attr("role", "search");
+              const hasExistingSearchLandmark =
+                $(el).closest('[role="search"]').length > 0;
+              if (!hasExistingSearchLandmark) {
+                const searchContainer = $(el).closest("form, div, section");
+                if (
+                  searchContainer.length > 0 &&
+                  searchContainer.attr("role") === undefined
+                ) {
+                  searchContainer.attr("role", "search");
+                }
               }
             }
           }
