@@ -91,6 +91,25 @@ export class UploadHandler implements UploadSpec {
   constructor(private readonly client: StitchToolClientSpec) {}
 
   async execute(projectId: string, input: UploadInput): Promise<UploadResult> {
+    // SECURITY: Ensure projectId does not contain directory traversal or path characters
+    // to protect against REST URL injection or unexpected file locations.
+    if (
+      !projectId ||
+      typeof projectId !== "string" ||
+      projectId.includes("/") ||
+      projectId.includes("\\") ||
+      projectId.includes("..")
+    ) {
+      return {
+        success: false,
+        error: {
+          code: "UPLOAD_FAILED",
+          message: `Path traversal attempt or invalid projectId detected: ${projectId}`,
+          recoverable: false,
+        },
+      };
+    }
+
     // ── Step 1: Validate extension ───────────────────────────────────────────
     const ext = path.extname(input.filePath).toLowerCase();
     const mimeType = SUPPORTED_MIME_TYPES[ext as SupportedExtension];

@@ -71,6 +71,24 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
     try {
       const input = DownloadAssetsInputSchema.parse(rawInput);
       const { projectId, outputDir, fileMode, tempDir, assetsSubdir } = input;
+
+      // SECURITY: Ensure projectId does not contain directory traversal or path characters
+      // to protect against REST URL injection or unexpected file locations.
+      if (
+        projectId.includes("/") ||
+        projectId.includes("\\") ||
+        projectId.includes("..")
+      ) {
+        return {
+          success: false,
+          error: {
+            code: "PATH_TRAVERSAL_ATTEMPT",
+            message: `Path traversal attempt detected in projectId: ${projectId}`,
+            recoverable: false,
+          },
+        };
+      }
+
       const resolvedOutputDir = path.resolve(outputDir);
       const resolvedTempDir = tempDir
         ? path.resolve(tempDir)
@@ -462,12 +480,16 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
               /search/i.test(ariaLabel);
 
             if (isSearch) {
-              const searchContainer = $(el).closest("form, div, section");
-              if (
-                searchContainer.length > 0 &&
-                searchContainer.attr("role") === undefined
-              ) {
-                searchContainer.attr("role", "search");
+              const hasExistingSearchLandmark =
+                $(el).closest('[role="search"]').length > 0;
+              if (!hasExistingSearchLandmark) {
+                const searchContainer = $(el).closest("form, div, section");
+                if (
+                  searchContainer.length > 0 &&
+                  searchContainer.attr("role") === undefined
+                ) {
+                  searchContainer.attr("role", "search");
+                }
               }
             }
           }

@@ -21,3 +21,11 @@
 **Learning:** Secondary absolute parameters like `tempDir` or `outputDir` in client/agent-exposed tools are high-risk vectors. Path splits using `path.sep` can be bypassed on Windows using forward slashes (`/`), so platform-neutral regex splitting `tempDir.split(/[\/\\]/)` should be used instead.
 
 **Prevention:** Ensure `tempDir` does not escape `process.cwd()` when relative, and doesn't contain platform-neutral traversal segments when absolute. Limit agent-driven `outputDir` tool targets strictly to subfolders of the current working directory (`process.cwd()`).
+
+## 2026-03-15 - Path Traversal Protection in projectId and REST post paths
+
+**Vulnerability:** The handwritten `UploadHandler` and `DownloadAssetsHandler` accepted user-supplied `projectId` values, and `StitchToolClient.httpPost` accepted dynamic REST path strings without validating them against path traversal or URL manipulation sequences. A malicious client/agent could supply a project ID containing directory traversal sequences (such as `../`), which when interpolated into REST paths (e.g., `projects/${projectId}/screens:batchCreate`), would traverse paths on the Google Cloud API, allowing unexpected endpoint requests or SSRF.
+
+**Learning:** Any dynamic parameter interpolated into HTTP URL paths or file writing paths must be strictly checked to prevent directory traversal or path characters (`..`, `/`, `\`), especially when used inside utility wrappers like `httpPost`.
+
+**Prevention:** Ensure `projectId` does not contain any path characters (`/`, `\`, `..`), and add a defensive block inside raw HTTP helpers (like `httpPost`) to reject dynamic URL paths containing traversal sequences (`..`, `\`).

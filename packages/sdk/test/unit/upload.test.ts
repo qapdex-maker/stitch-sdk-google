@@ -76,6 +76,21 @@ describe("UploadHandler (TDD RED)", () => {
 });
 
 describe("UploadHandler", () => {
+  it("returns UPLOAD_FAILED if projectId contains path traversal", async () => {
+    const handler = new UploadHandler(createMockClient());
+    const result = await handler.execute("proj-1/../evil", {
+      filePath: "/images/photo.png",
+      createScreenInstances: true,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe("UPLOAD_FAILED");
+      expect(result.error.message).toContain(
+        "Path traversal attempt or invalid projectId detected",
+      );
+    }
+  });
+
   it("returns UNSUPPORTED_FORMAT for a .gif file", async () => {
     const handler = new UploadHandler(createMockClient());
     const result = await handler.execute("proj-1", {
@@ -240,10 +255,12 @@ describe("Project.upload (generic integration)", () => {
     const mockClient = createMockClient({
       httpPost: httpPostMock as unknown as StitchToolClientSpec["httpPost"],
     });
-    return new Project(
+    const proj = new Project(
       mockClient as unknown as StitchToolClient,
       "test-project-id",
     );
+    (proj as any).projectId = "test-project-id";
+    return proj;
   }
 
   it("throws StitchError when the asset format is unsupported", async () => {
