@@ -41,3 +41,8 @@ This journal contains only critical UX and accessibility learnings. Routine upda
 
 **Learning:** Search elements and sections are critical landmarks for keyboard and screen-reader navigation. If a search input exists but its parent container (form, div, or section) lacks a semantic role, screen reader users cannot quickly jump to or identify the search landmark, forcing them to exhaustively scan the entire page.
 **Action:** Programmatically scan all inputs, and if a search input is detected (by checking type, id, name, placeholder, title, or aria-label for 'search'), find its closest form, div, or section container. If the container lacks a `role` attribute, inject `role="search"` to establish an accessible search landmark.
+
+## 2026-04-08 - [Automatic Autocomplete Mapping for Cognitive and Motor Accessibility]
+
+**Learning:** Forms in downloaded or generated screens frequently collect sensitive personal or account information (like name, email, phone, zip, country, and credentials) but completely lack semantic `autocomplete` attributes. This forces users, particularly those with physical, motor, or cognitive disabilities, to exhaustively re-type their information and limits browsers' ability to provide safe, reliable autofill (WCAG 2.1 1.3.5 - Identify Input Purpose).
+**Action:** Programmatically inspect form input and textarea elements, scan their types, ids, names, placeholders, titles, and connected labels for purpose-conveying text, and automatically assign the correct standard `autocomplete` identifier if missing.

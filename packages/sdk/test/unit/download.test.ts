@@ -394,6 +394,87 @@ describe("DownloadAssetsHandler", () => {
     expect($written("#inp-existing-aria").attr("aria-required")).toBe("false");
   });
 
+  it("automatically adds standard autocomplete attributes to input/textarea elements when missing", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<input id="inp-email-1" type="email">' +
+      '<input id="inp-email-2" placeholder="Your Email Address">' +
+      '<input id="inp-pass-1" type="password">' +
+      '<input id="inp-pass-new" name="new-password" type="password">' +
+      '<input id="inp-username" name="user_name">' +
+      '<input id="inp-firstname" id="first-name">' +
+      '<input id="inp-lastname" title="Last Name">' +
+      '<input id="inp-fullname" placeholder="Name">' +
+      '<input id="inp-tel" type="tel">' +
+      '<input id="inp-zip" name="postal_code">' +
+      '<input id="inp-country" name="country">' +
+      '<input id="inp-existing" autocomplete="organization" placeholder="Company">' +
+      '<select id="sel-country" name="country"><option>US</option></select>' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("inp-email-1"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    const $written = cheerio.load(writtenHtml);
+
+    expect($written("#inp-email-1").attr("autocomplete")).toBe("email");
+    expect($written("#inp-email-2").attr("autocomplete")).toBe("email");
+    expect($written("#inp-pass-1").attr("autocomplete")).toBe(
+      "current-password",
+    );
+    expect($written("#inp-pass-new").attr("autocomplete")).toBe("new-password");
+    expect($written("#inp-username").attr("autocomplete")).toBe("username");
+    expect($written("#inp-firstname").attr("autocomplete")).toBe("given-name");
+    expect($written("#inp-lastname").attr("autocomplete")).toBe("family-name");
+    expect($written("#inp-fullname").attr("autocomplete")).toBe("name");
+    expect($written("#inp-tel").attr("autocomplete")).toBe("tel");
+    expect($written("#inp-zip").attr("autocomplete")).toBe("postal-code");
+    expect($written("#inp-country").attr("autocomplete")).toBe("country");
+    expect($written("#inp-existing").attr("autocomplete")).toBe("organization");
+    // select elements should NOT get autocomplete
+    expect($written("#sel-country").attr("autocomplete")).toBeUndefined();
+  });
+
   it("handles image fallback alt with title and extracts SVG titles for buttons/links", async () => {
     const fs = await import("node:fs/promises");
     vi.mocked(fs.writeFile).mockClear();
