@@ -265,6 +265,21 @@ describe("StitchToolClient", () => {
 
   // ─── Slice 3: httpPost transport ────────────────────────────────
   describe("httpPost", () => {
+    it("throws StitchError with PERMISSION_DENIED if the path contains traversal sequences", async () => {
+      const client = new StitchToolClient({ apiKey: "test-key" });
+      const { StitchError } = await import("../../src/spec/errors.js");
+      await expect(client.httpPost("projects/../../evil", {})).rejects.toThrow(
+        StitchError,
+      );
+
+      await client.httpPost("projects/../../evil", {}).catch((err) => {
+        expect(err.code).toBe("PERMISSION_DENIED");
+        expect(err.message).toContain(
+          "path traversal characters are not allowed",
+        );
+      });
+    });
+
     // Test 10: sends X-Goog-Api-Key header
     it("sends X-Goog-Api-Key header in the request", async () => {
       const client = new StitchToolClient({ apiKey: "test-key" });

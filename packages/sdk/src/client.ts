@@ -209,6 +209,15 @@ export class StitchToolClient implements StitchToolClientSpec {
    *   Neither means "API keys are unsupported." See upload-handler.ts for full context.
    */
   async httpPost<T>(path: string, body: unknown): Promise<T> {
+    // SECURITY: Prevent path traversal in the REST path to avoid SSRF or arbitrary endpoint requests.
+    if (path.includes("..") || path.includes("\\")) {
+      throw new StitchError({
+        code: "PERMISSION_DENIED",
+        message: `Invalid API path: path traversal characters are not allowed`,
+        recoverable: false,
+      });
+    }
+
     const url = `${this.config.baseUrl.replace(/\/mcp$/, "").replace(/\/$/, "")}/v1/${path}`;
     const response = await fetch(url, {
       method: "POST",

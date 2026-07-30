@@ -1108,6 +1108,26 @@ describe("DownloadAssetsHandler", () => {
     }
   });
 
+  it("returns PATH_TRAVERSAL_ATTEMPT error if projectId contains path traversal", async () => {
+    const mockClient = {
+      callTool: vi.fn(),
+    } as any;
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    const result = await handler.execute({
+      projectId: "p1/../../evil",
+      outputDir: "/tmp/out",
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe("PATH_TRAVERSAL_ATTEMPT");
+      expect(result.error.message).toContain(
+        "Path traversal attempt detected in projectId",
+      );
+    }
+  });
+
   it("returns PATH_TRAVERSAL_ATTEMPT error if screenId contains path traversal and title is missing", async () => {
     const mockClient = {
       callTool: vi.fn().mockResolvedValue({
