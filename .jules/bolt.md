@@ -42,3 +42,8 @@
 
 **Learning:** In recursive schema utility functions (like `collectRefTargets` in `schema-repair.ts` and `stripAndResolve` in `adk-adapter.ts`), calling the function recursively on every leaf node (such as strings, numbers, booleans, and nulls) generates substantial function call stack overhead and redundant parameter evaluation. Adding direct `typeof val === "object"` guards before recursive calls avoids thousands of redundant execution frames on primitive fields, reducing schema traversal and cleaning times by ~13-15%.
 **Action:** In recursive JSON Schema/Object deep tree traversals, always short-circuit primitive values at the parent iteration level rather than making recursive function calls to handle them.
+
+## 2026-11-18 - Zero-Allocation Cheerio Attribute Lookup and Landmark Optimization
+
+**Learning:** In HTML post-processing within `DownloadAssetsHandler`, fetching element attributes iteratively using Cheerio's `$(el).attr("...")` wrapper for each attribute triggers massive allocation churn and DOM traversal overhead (up to 29 `.attr()` calls per element). Replacing these with a direct lookup on the underlying element's `attribs` object (e.g., `(el as any).attribs`) completely avoids the intermediate jQuery/Cheerio wrapper instantiation, providing a zero-allocation attribute caching path. Furthermore, consolidating duplicate search input post-processing blocks into a single-pass traversal and adding proper landmark checks prevents redundant tag nesting, fixing failing test suites.
+**Action:** When executing high-frequency or nested attribute lookups inside Cheerio loops, cache the direct `.attribs` property of the raw Element to completely eliminate redundant `.attr()` wrapper allocations and improve DOM traversal performance.

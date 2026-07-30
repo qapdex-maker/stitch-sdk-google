@@ -309,19 +309,31 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         let labelCounter = 1;
         let descCounter = 1;
         $("input, textarea, select").each((_, el) => {
-          // 3c. Search Input Landmark Accessibility: Establish search landmarks for search controls when missing.
-          const nameAttr = $(el).attr("name") || "";
-          const idAttr = $(el).attr("id") || "";
-          const classAttr = $(el).attr("class") || "";
-          const placeholderAttr = $(el).attr("placeholder") || "";
-          const typeAttr = $(el).attr("type") || "";
+          // OPTIMIZATION: Retrieve the direct `attribs` object from the raw element.
+          // This avoids up to 29 expensive, redundant Cheerio `.attr()` calls per element,
+          // drastically reducing Cheerio wrapper creation and DOM property lookup overhead.
+          const attribs = (el as any).attribs || {};
+          const typeAttr = (attribs["type"] || "").toLowerCase();
+          const nameAttr = attribs["name"] || "";
+          const idAttr = attribs["id"] || "";
+          const classAttr = attribs["class"] || "";
+          const placeholderAttr = attribs["placeholder"] || "";
+          const titleAttr = attribs["title"] || "";
+          const ariaLabelAttr = attribs["aria-label"];
+          const ariaLabelledByAttr = attribs["aria-labelledby"];
+          const ariaDescribedByAttr = attribs["aria-describedby"];
+          const requiredAttr = attribs["required"];
+          const ariaRequiredAttr = attribs["aria-required"];
 
+          // 3c. Search Input Landmark Accessibility: Establish search landmarks for search controls when missing.
           const isSearchInput =
-            typeAttr.toLowerCase() === "search" ||
+            typeAttr === "search" ||
             /search/i.test(nameAttr) ||
             /search/i.test(idAttr) ||
             /search/i.test(classAttr) ||
-            /search/i.test(placeholderAttr);
+            /search/i.test(placeholderAttr) ||
+            /search/i.test(titleAttr) ||
+            /search/i.test(ariaLabelAttr || "");
 
           if (isSearchInput) {
             const hasExistingSearchLandmark =
@@ -337,12 +349,12 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
             }
           }
 
-          const type = $(el).attr("type");
-          const id = $(el).attr("id");
-          const hasAriaLabel = $(el).attr("aria-label") !== undefined;
-          const hasAriaLabelledBy = $(el).attr("aria-labelledby") !== undefined;
+          const hasAriaLabel = ariaLabelAttr !== undefined;
+          const hasAriaLabelledBy = ariaLabelledByAttr !== undefined;
           const hasLabelAncestor = $(el).closest("label").length > 0;
-          const hasForLabel = id ? $(`label[for="${id}"]`).length > 0 : false;
+          const hasForLabel = idAttr
+            ? $(`label[for="${idAttr}"]`).length > 0
+            : false;
 
           let hasAccessibleName =
             hasAriaLabel ||
@@ -352,19 +364,21 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
 
           if (!hasAccessibleName) {
             // Check for adjacent/preceding unassociated label elements
-            if (type === "checkbox" || type === "radio") {
+            if (typeAttr === "checkbox" || typeAttr === "radio") {
               const nextEl = $(el).next();
               if (nextEl.is("label") && !nextEl.attr("for")) {
-                const uniqueId = id || `auto-label-control-${labelCounter++}`;
-                if (!id) $(el).attr("id", uniqueId);
+                const uniqueId =
+                  idAttr || `auto-label-control-${labelCounter++}`;
+                if (!idAttr) $(el).attr("id", uniqueId);
                 nextEl.attr("for", uniqueId);
                 hasAccessibleName = true;
               }
             } else {
               const prevEl = $(el).prev();
               if (prevEl.is("label") && !prevEl.attr("for")) {
-                const uniqueId = id || `auto-label-control-${labelCounter++}`;
-                if (!id) $(el).attr("id", uniqueId);
+                const uniqueId =
+                  idAttr || `auto-label-control-${labelCounter++}`;
+                if (!idAttr) $(el).attr("id", uniqueId);
                 prevEl.attr("for", uniqueId);
                 hasAccessibleName = true;
               }
@@ -372,27 +386,25 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           }
 
           if (!hasAccessibleName) {
-            const placeholder = $(el).attr("placeholder");
-            const title = $(el).attr("title");
-            const fallbackLabel = placeholder || title;
+            const fallbackLabel = placeholderAttr || titleAttr;
             if (fallbackLabel) {
               $(el).attr("aria-label", fallbackLabel);
             }
           }
 
           // 3a. Associate adjacent helper/error description elements using aria-describedby
-          const hasAriaDescribedBy =
-            $(el).attr("aria-describedby") !== undefined;
+          const hasAriaDescribedBy = ariaDescribedByAttr !== undefined;
           if (!hasAriaDescribedBy) {
             const nextEl = $(el).next();
             if (nextEl.length > 0) {
-              const classAttr = nextEl.attr("class") || "";
-              const idAttr = nextEl.attr("id") || "";
+              const nextAttribs = (nextEl[0] as any)?.attribs || {};
+              const siblingClassAttr = nextAttribs["class"] || "";
+              const siblingIdAttr = nextAttribs["id"] || "";
               if (
-                /help|desc|error|hint/i.test(classAttr) ||
-                /help|desc|error|hint/i.test(idAttr)
+                /help|desc|error|hint/i.test(siblingClassAttr) ||
+                /help|desc|error|hint/i.test(siblingIdAttr)
               ) {
-                let descId = nextEl.attr("id");
+                let descId = siblingIdAttr;
                 if (!descId) {
                   descId = `auto-desc-${descCounter++}`;
                   nextEl.attr("id", descId);
@@ -403,8 +415,8 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           }
 
           // 3b. Map Visual Required Indicators to Semantic aria-required="true"
-          const hasRequiredAttr = $(el).attr("required") !== undefined;
-          const hasAriaRequiredAttr = $(el).attr("aria-required") !== undefined;
+          const hasRequiredAttr = requiredAttr !== undefined;
+          const hasAriaRequiredAttr = ariaRequiredAttr !== undefined;
 
           if (!hasRequiredAttr && !hasAriaRequiredAttr) {
             let textToInspect = "";
@@ -413,24 +425,20 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
             if (parentLabel.length > 0) {
               textToInspect += " " + parentLabel.text();
             }
-            const currentId = $(el).attr("id");
-            if (currentId) {
-              $(`label[for="${currentId}"]`).each((_, lbl) => {
+            if (idAttr) {
+              $(`label[for="${idAttr}"]`).each((_, lbl) => {
                 textToInspect += " " + $(lbl).text();
               });
             }
 
-            const placeholder = $(el).attr("placeholder");
-            if (placeholder) {
-              textToInspect += " " + placeholder;
+            if (placeholderAttr) {
+              textToInspect += " " + placeholderAttr;
             }
-            const title = $(el).attr("title");
-            if (title) {
-              textToInspect += " " + title;
+            if (titleAttr) {
+              textToInspect += " " + titleAttr;
             }
-            const ariaLabel = $(el).attr("aria-label");
-            if (ariaLabel) {
-              textToInspect += " " + ariaLabel;
+            if (ariaLabelAttr) {
+              textToInspect += " " + ariaLabelAttr;
             }
 
             if (
@@ -438,37 +446,6 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
               /required/i.test(textToInspect)
             ) {
               $(el).attr("aria-required", "true");
-            }
-          }
-
-          // 3c. Automatic Search Landmark Association (role="search"): Improve screen-reader
-          // navigation by tagging containers with role="search" when search fields are present.
-          if ($(el).is("input")) {
-            const inputType = $(el).attr("type") || "text";
-            const inputId = $(el).attr("id") || "";
-            const inputName = $(el).attr("name") || "";
-            const inputClass = $(el).attr("class") || "";
-            const placeholder = $(el).attr("placeholder") || "";
-            const title = $(el).attr("title") || "";
-            const ariaLabel = $(el).attr("aria-label") || "";
-
-            const isSearch =
-              inputType === "search" ||
-              /search/i.test(inputId) ||
-              /search/i.test(inputName) ||
-              /search/i.test(inputClass) ||
-              /search/i.test(placeholder) ||
-              /search/i.test(title) ||
-              /search/i.test(ariaLabel);
-
-            if (isSearch) {
-              const searchContainer = $(el).closest("form, div, section");
-              if (
-                searchContainer.length > 0 &&
-                searchContainer.attr("role") === undefined
-              ) {
-                searchContainer.attr("role", "search");
-              }
             }
           }
         });
