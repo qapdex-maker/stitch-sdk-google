@@ -91,6 +91,36 @@ describe("UploadHandler", () => {
     }
   });
 
+  it("returns UPLOAD_FAILED if projectId contains spaces or invalid characters", async () => {
+    const handler = new UploadHandler(createMockClient());
+    const result = await handler.execute("invalid proj id", {
+      filePath: "/images/photo.png",
+      createScreenInstances: true,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe("UPLOAD_FAILED");
+      expect(result.error.message).toContain(
+        "Path traversal attempt or invalid projectId detected",
+      );
+    }
+  });
+
+  it("returns UPLOAD_FAILED if projectId contains URL-encoded slashes", async () => {
+    const handler = new UploadHandler(createMockClient());
+    const result = await handler.execute("p1%2f%2e%2e%2fevil", {
+      filePath: "/images/photo.png",
+      createScreenInstances: true,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe("UPLOAD_FAILED");
+      expect(result.error.message).toContain(
+        "Path traversal attempt or invalid projectId detected",
+      );
+    }
+  });
+
   it("returns UNSUPPORTED_FORMAT for a .gif file", async () => {
     const handler = new UploadHandler(createMockClient());
     const result = await handler.execute("proj-1", {
