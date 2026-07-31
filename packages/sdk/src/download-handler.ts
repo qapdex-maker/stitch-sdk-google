@@ -501,6 +501,84 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
               }
             }
           }
+
+          // 3d. Automatic Autocomplete Mapping (WCAG 2.1 1.3.5): Map form inputs and textareas
+          // lacking autocomplete attributes to standard autocomplete values.
+          const tagName = (el as any).name;
+          if (tagName === "input" || tagName === "textarea") {
+            const existingAutocomplete = attribs["autocomplete"];
+            if (existingAutocomplete === undefined) {
+              let labelText = "";
+              if (idAttr) {
+                $(`label[for="${idAttr}"]`).each((_, lbl) => {
+                  labelText += " " + $(lbl).text();
+                });
+              }
+              const parentLabel = $(el).closest("label");
+              if (parentLabel.length > 0) {
+                labelText += " " + parentLabel.text();
+              }
+
+              const clues =
+                `${typeAttr} ${nameAttr} ${idAttr} ${placeholderAttr} ${titleAttr} ${ariaLabelAttr || ""} ${labelText}`.toLowerCase();
+
+              let autocompleteValue: string | undefined;
+
+              if (typeAttr === "password") {
+                if (
+                  clues.includes("new") ||
+                  clues.includes("signup") ||
+                  clues.includes("register")
+                ) {
+                  autocompleteValue = "new-password";
+                } else {
+                  autocompleteValue = "current-password";
+                }
+              } else if (clues.includes("email")) {
+                autocompleteValue = "email";
+              } else if (clues.includes("new-password")) {
+                autocompleteValue = "new-password";
+              } else if (clues.includes("current-password")) {
+                autocompleteValue = "current-password";
+              } else if (clues.includes("first") && clues.includes("name")) {
+                autocompleteValue = "given-name";
+              } else if (clues.includes("last") && clues.includes("name")) {
+                autocompleteValue = "family-name";
+              } else if (clues.includes("given") && clues.includes("name")) {
+                autocompleteValue = "given-name";
+              } else if (clues.includes("family") && clues.includes("name")) {
+                autocompleteValue = "family-name";
+              } else if (
+                clues.includes("username") ||
+                clues.includes("user_name") ||
+                clues.includes("login")
+              ) {
+                autocompleteValue = "username";
+              } else if (
+                typeAttr === "tel" ||
+                clues.includes("phone") ||
+                clues.includes("telephone") ||
+                clues.includes("mobile") ||
+                clues.includes("tel")
+              ) {
+                autocompleteValue = "tel";
+              } else if (
+                clues.includes("zip") ||
+                clues.includes("postal") ||
+                clues.includes("postcode")
+              ) {
+                autocompleteValue = "postal-code";
+              } else if (clues.includes("country")) {
+                autocompleteValue = "country";
+              } else if (clues.includes("name")) {
+                autocompleteValue = "name";
+              }
+
+              if (autocompleteValue) {
+                $(el).attr("autocomplete", autocompleteValue);
+              }
+            }
+          }
         });
 
         // 4. Document Language Accessibility: Ensure the <html> element has a lang attribute (defaults to "en").
