@@ -91,13 +91,12 @@ export class UploadHandler implements UploadSpec {
   constructor(private readonly client: StitchToolClientSpec) {}
 
   async execute(projectId: string, input: UploadInput): Promise<UploadResult> {
-    // SECURITY: Ensure projectId does not contain directory traversal or path characters
-    // to protect against REST URL injection or unexpected file locations.
+    // SECURITY: Ensure projectId does not contain directory traversal, path characters,
+    // or invalid characters to protect against REST URL injection or unexpected file locations.
     if (
       !projectId ||
       typeof projectId !== "string" ||
-      projectId.includes("/") ||
-      projectId.includes("\\") ||
+      !/^[a-zA-Z0-9-.:_]+$/.test(projectId) ||
       projectId.includes("..")
     ) {
       return {

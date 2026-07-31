@@ -72,11 +72,12 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
       const input = DownloadAssetsInputSchema.parse(rawInput);
       const { projectId, outputDir, fileMode, tempDir, assetsSubdir } = input;
 
-      // SECURITY: Ensure projectId does not contain directory traversal or path characters
-      // to protect against REST URL injection or unexpected file locations.
+      // SECURITY: Ensure projectId does not contain directory traversal, path characters,
+      // or invalid characters to protect against REST URL injection or unexpected file locations.
       if (
-        projectId.includes("/") ||
-        projectId.includes("\\") ||
+        !projectId ||
+        typeof projectId !== "string" ||
+        !/^[a-zA-Z0-9-.:_]+$/.test(projectId) ||
         projectId.includes("..")
       ) {
         return {
@@ -344,6 +345,73 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           const ariaRequiredAttr = attribs["aria-required"];
 
           // 3c. Search Input Landmark Accessibility: Establish search landmarks for search controls when missing.
+          const isSelect = (el as any).name === "select";
+          if (!isSelect && attribs["autocomplete"] === undefined) {
+            let lookupText = `${typeAttr} ${nameAttr} ${idAttr} ${placeholderAttr} ${titleAttr} ${ariaLabelAttr || ""}`;
+            const parentLabel = $(el).closest("label");
+            if (parentLabel.length > 0) {
+              lookupText += " " + parentLabel.text();
+            }
+            if (idAttr) {
+              $(`label[for="${idAttr}"]`).each((_, lbl) => {
+                lookupText += " " + $(lbl).text();
+              });
+            }
+            lookupText = lookupText.toLowerCase();
+
+            let autocompleteValue: string | undefined = undefined;
+            if (typeAttr === "email" || lookupText.includes("email")) {
+              autocompleteValue = "email";
+            } else if (typeAttr === "password") {
+              if (lookupText.includes("new")) {
+                autocompleteValue = "new-password";
+              } else {
+                autocompleteValue = "current-password";
+              }
+            } else if (
+              lookupText.includes("username") ||
+              lookupText.includes("user_name") ||
+              lookupText.includes("user-name")
+            ) {
+              autocompleteValue = "username";
+            } else if (
+              lookupText.includes("first") ||
+              lookupText.includes("given")
+            ) {
+              autocompleteValue = "given-name";
+            } else if (
+              lookupText.includes("last") ||
+              lookupText.includes("family")
+            ) {
+              autocompleteValue = "family-name";
+            } else if (
+              nameAttr.toLowerCase().includes("name") ||
+              idAttr.toLowerCase().includes("name") ||
+              placeholderAttr.toLowerCase() === "name" ||
+              placeholderAttr.toLowerCase() === "full name" ||
+              placeholderAttr.toLowerCase() === "fullname"
+            ) {
+              autocompleteValue = "name";
+            } else if (
+              typeAttr === "tel" ||
+              lookupText.includes("tel") ||
+              lookupText.includes("phone")
+            ) {
+              autocompleteValue = "tel";
+            } else if (
+              lookupText.includes("zip") ||
+              lookupText.includes("postal")
+            ) {
+              autocompleteValue = "postal-code";
+            } else if (lookupText.includes("country")) {
+              autocompleteValue = "country";
+            }
+
+            if (autocompleteValue) {
+              $(el).attr("autocomplete", autocompleteValue);
+            }
+          }
+
           const isSearchInput =
             typeAttr === "search" ||
             /search/i.test(nameAttr) ||

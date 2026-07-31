@@ -29,3 +29,11 @@
 **Learning:** Any dynamic parameter interpolated into HTTP URL paths or file writing paths must be strictly checked to prevent directory traversal or path characters (`..`, `/`, `\`), especially when used inside utility wrappers like `httpPost`.
 
 **Prevention:** Ensure `projectId` does not contain any path characters (`/`, `\`, `..`), and add a defensive block inside raw HTTP helpers (like `httpPost`) to reject dynamic URL paths containing traversal sequences (`..`, `\`).
+
+## 2026-03-20 - Enhanced Project ID Regex Validation for Path Traversal Defense
+
+**Vulnerability:** Although previous defenses implemented `.includes('/')`, `.includes('\\')`, and `.includes('..')` checks for `projectId` inputs in both `DownloadAssetsHandler` and `UploadHandler`, these inputs were not strictly validated against a positive character allowlist. Consequently, malicious payloads containing control characters, URL-encoded path delimiters, or other injection vectors could theoretically bypass simple text inclusion checks.
+
+**Learning:** Relying solely on blocklists (e.g. searching for specific directory traversal substrings) leaves room for bypasses via encoding variations or special character injections. Establishing a strict character allowlist (positive validation) is a much more secure and comprehensive approach.
+
+**Prevention:** Constrain inputs representing entity IDs (such as Google Cloud project IDs) to a strict regex allowlist pattern (e.g., `/^[a-zA-Z0-9-.:_]+$/`) and combine it with explicit relative traversal checks (e.g., rejecting any sequence containing `..`).
