@@ -478,6 +478,53 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
             }
           }
 
+          // 3d. Automatically maps form input and textarea controls lacking autocomplete attributes
+          // to standard autocomplete values based on their type, name, id, placeholder, title, and aria-label.
+          // Fast path: Uses direct O(1) attribute string checks to avoid costly DOM traversals or global queries.
+          if (
+            ($(el).is("input") || $(el).is("textarea")) &&
+            attribs["autocomplete"] === undefined
+          ) {
+            const checkStr =
+              `${typeAttr} ${nameAttr} ${idAttr} ${placeholderAttr} ${titleAttr} ${ariaLabelAttr || ""}`.toLowerCase();
+
+            let autoValue: string | undefined;
+            if (typeAttr === "password") {
+              if (checkStr.includes("new")) {
+                autoValue = "new-password";
+              } else {
+                autoValue = "current-password";
+              }
+            } else if (checkStr.includes("email")) {
+              autoValue = "email";
+            } else if (/username|user_name|user-name|login/i.test(checkStr)) {
+              autoValue = "username";
+            } else if (/first[-_ ]*name|given[-_ ]*name/i.test(checkStr)) {
+              autoValue = "given-name";
+            } else if (
+              /last[-_ ]*name|family[-_ ]*name|surname/i.test(checkStr)
+            ) {
+              autoValue = "family-name";
+            } else if (checkStr.includes("name")) {
+              autoValue = "name";
+            } else if (
+              typeAttr === "tel" ||
+              /phone|tel|mobile/i.test(checkStr)
+            ) {
+              autoValue = "tel";
+            } else if (
+              /postal[-_ ]*code|zip[-_ ]*code|zipcode|zip/i.test(checkStr)
+            ) {
+              autoValue = "postal-code";
+            } else if (checkStr.includes("country")) {
+              autoValue = "country";
+            }
+
+            if (autoValue) {
+              $(el).attr("autocomplete", autoValue);
+            }
+          }
+
           // 3a. Associate adjacent helper/error description elements using aria-describedby
           const hasAriaDescribedBy = ariaDescribedByAttr !== undefined;
           if (!hasAriaDescribedBy) {
@@ -535,118 +582,10 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
             }
           }
 
-          // 3c. Automatic Search Landmark Association (role="search"): Improve screen-reader
-          // navigation by tagging containers with role="search" when search fields are present.
-          if ($(el).is("input")) {
-            const inputType = $(el).attr("type") || "text";
-            const inputId = $(el).attr("id") || "";
-            const inputName = $(el).attr("name") || "";
-            const inputClass = $(el).attr("class") || "";
-            const placeholder = $(el).attr("placeholder") || "";
-            const title = $(el).attr("title") || "";
-            const ariaLabel = $(el).attr("aria-label") || "";
-
-            const isSearch =
-              inputType === "search" ||
-              /search/i.test(inputId) ||
-              /search/i.test(inputName) ||
-              /search/i.test(inputClass) ||
-              /search/i.test(placeholder) ||
-              /search/i.test(title) ||
-              /search/i.test(ariaLabel);
-
-            if (isSearch) {
-              const hasExistingSearchLandmark =
-                $(el).closest('[role="search"]').length > 0;
-              if (!hasExistingSearchLandmark) {
-                const searchContainer = $(el).closest("form, div, section");
-                if (
-                  searchContainer.length > 0 &&
-                  searchContainer.attr("role") === undefined
-                ) {
-                  searchContainer.attr("role", "search");
-                }
-              }
-            }
-          }
-
-          // 3d. Automatic Autocomplete Mapping (WCAG 2.1 1.3.5): Map form inputs and textareas
-          // lacking autocomplete attributes to standard autocomplete values.
-          const tagName = (el as any).name;
-          if (tagName === "input" || tagName === "textarea") {
-            const existingAutocomplete = attribs["autocomplete"];
-            if (existingAutocomplete === undefined) {
-              let labelText = "";
-              if (idAttr) {
-                $(`label[for="${idAttr}"]`).each((_, lbl) => {
-                  labelText += " " + $(lbl).text();
-                });
-              }
-              const parentLabel = $(el).closest("label");
-              if (parentLabel.length > 0) {
-                labelText += " " + parentLabel.text();
-              }
-
-              const clues =
-                `${typeAttr} ${nameAttr} ${idAttr} ${placeholderAttr} ${titleAttr} ${ariaLabelAttr || ""} ${labelText}`.toLowerCase();
-
-              let autocompleteValue: string | undefined;
-
-              if (typeAttr === "password") {
-                if (
-                  clues.includes("new") ||
-                  clues.includes("signup") ||
-                  clues.includes("register")
-                ) {
-                  autocompleteValue = "new-password";
-                } else {
-                  autocompleteValue = "current-password";
-                }
-              } else if (clues.includes("email")) {
-                autocompleteValue = "email";
-              } else if (clues.includes("new-password")) {
-                autocompleteValue = "new-password";
-              } else if (clues.includes("current-password")) {
-                autocompleteValue = "current-password";
-              } else if (clues.includes("first") && clues.includes("name")) {
-                autocompleteValue = "given-name";
-              } else if (clues.includes("last") && clues.includes("name")) {
-                autocompleteValue = "family-name";
-              } else if (clues.includes("given") && clues.includes("name")) {
-                autocompleteValue = "given-name";
-              } else if (clues.includes("family") && clues.includes("name")) {
-                autocompleteValue = "family-name";
-              } else if (
-                clues.includes("username") ||
-                clues.includes("user_name") ||
-                clues.includes("login")
-              ) {
-                autocompleteValue = "username";
-              } else if (
-                typeAttr === "tel" ||
-                clues.includes("phone") ||
-                clues.includes("telephone") ||
-                clues.includes("mobile") ||
-                clues.includes("tel")
-              ) {
-                autocompleteValue = "tel";
-              } else if (
-                clues.includes("zip") ||
-                clues.includes("postal") ||
-                clues.includes("postcode")
-              ) {
-                autocompleteValue = "postal-code";
-              } else if (clues.includes("country")) {
-                autocompleteValue = "country";
-              } else if (clues.includes("name")) {
-                autocompleteValue = "name";
-              }
-
-              if (autocompleteValue) {
-                $(el).attr("autocomplete", autocompleteValue);
-              }
-            }
-          }
+          // OPTIMIZATION: Removed the duplicate, unoptimized 3c "Automatic Search Landmark Association" block here.
+          // The search landmark mapping is already fully handled earlier in this loop (using optimized raw `attribs` lookup).
+          // Removing this redundant block completely eliminates up to 7 slow `$(el).attr()` calls, 1 `.is()`, and 2 `.closest()`
+          // allocations/queries per form control element, boosting performance and reducing memory churn.
         });
 
         // 4. Document Language Accessibility: Ensure the <html> element has a lang attribute (defaults to "en").
