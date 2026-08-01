@@ -265,17 +265,48 @@ describe("StitchToolClient", () => {
 
   // ─── Slice 3: httpPost transport ────────────────────────────────
   describe("httpPost", () => {
-    it("throws StitchError with PERMISSION_DENIED if the path contains traversal sequences", async () => {
+    it("throws StitchError with PERMISSION_DENIED if the path is invalid or malicious", async () => {
       const client = new StitchToolClient({ apiKey: "test-key" });
       const { StitchError } = await import("../../src/spec/errors.js");
+
+      // Path traversal
       await expect(client.httpPost("projects/../../evil", {})).rejects.toThrow(
+        StitchError,
+      );
+
+      // Leading slash
+      await expect(client.httpPost("/projects/my-project", {})).rejects.toThrow(
+        StitchError,
+      );
+
+      // Double slash
+      await expect(client.httpPost("projects//my-project", {})).rejects.toThrow(
+        StitchError,
+      );
+
+      // Protocol-relative/absolute URLs
+      await expect(
+        client.httpPost("http://evil.com/projects", {}),
+      ).rejects.toThrow(StitchError);
+      await expect(client.httpPost("//evil.com/projects", {})).rejects.toThrow(
+        StitchError,
+      );
+
+      // Malicious/invalid URL control characters
+      await expect(client.httpPost("projects?foo=bar", {})).rejects.toThrow(
+        StitchError,
+      );
+      await expect(client.httpPost("projects#anchor", {})).rejects.toThrow(
+        StitchError,
+      );
+      await expect(client.httpPost("projects@host", {})).rejects.toThrow(
         StitchError,
       );
 
       await client.httpPost("projects/../../evil", {}).catch((err) => {
         expect(err.code).toBe("PERMISSION_DENIED");
         expect(err.message).toContain(
-          "path traversal characters are not allowed",
+          "path traversal, absolute/protocol-relative URLs, or invalid characters are not allowed",
         );
       });
     });
