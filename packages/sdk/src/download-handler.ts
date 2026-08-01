@@ -594,6 +594,35 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           htmlEl.attr("lang", "en");
         }
 
+        // 7. Disabled Controls Accessibility: Map native and visual disabled states to semantic aria-disabled="true"
+        // for native controls, links, and custom clickable elements. If a custom clickable element is disabled,
+        // we ensure it has tabindex="-1" so it cannot be focused via keyboard navigation.
+        $(
+          "button, a, input, textarea, select, [onclick], [role='button']",
+        ).each((_, el) => {
+          const $el = $(el);
+          const hasDisabledAttr = $el.attr("disabled") !== undefined;
+          const classes = ($el.attr("class") || "").split(/\s+/);
+          const hasDisabledClass = classes.some((cls) => {
+            if (cls.includes(":")) return false; // Skip Tailwind modifiers like disabled:opacity-50
+            return /\bdisabled\b/i.test(cls);
+          });
+
+          if (hasDisabledAttr || hasDisabledClass) {
+            if ($el.attr("aria-disabled") === undefined) {
+              $el.attr("aria-disabled", "true");
+            }
+            // For custom non-interactive elements that act as buttons/links
+            if (
+              !$el.is("button, a, input, textarea, select, details") &&
+              ($el.attr("onclick") !== undefined ||
+                $el.attr("role") === "button")
+            ) {
+              $el.attr("tabindex", "-1");
+            }
+          }
+        });
+
         // 6. Custom Clickable Element Accessibility: Ensure non-interactive elements (like div, span, i, p)
         // with `onclick` attributes are given `role="button"` and `tabindex="0"` to make them keyboard and
         // screen-reader accessible.
@@ -601,13 +630,14 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         // Enter and Space key presses into click events.
         $("[onclick]").each((_, el) => {
           if (!$(el).is("button, a, input, select, textarea, details")) {
+            const isDisabled = $(el).attr("aria-disabled") === "true";
             if ($(el).attr("role") === undefined) {
               $(el).attr("role", "button");
             }
             if ($(el).attr("tabindex") === undefined) {
-              $(el).attr("tabindex", "0");
+              $(el).attr("tabindex", isDisabled ? "-1" : "0");
             }
-            if ($(el).attr("onkeydown") === undefined) {
+            if ($(el).attr("onkeydown") === undefined && !isDisabled) {
               $(el).attr(
                 "onkeydown",
                 "if (event.key === 'Enter' || event.key === ' ') { this.click(); event.preventDefault(); }",
