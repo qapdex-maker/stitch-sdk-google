@@ -1609,6 +1609,95 @@ describe("DownloadAssetsHandler", () => {
       },
     ]);
   });
+
+  it("programmatically tags disabled controls and handles custom clickable disabled elements correctly", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<button id="btn-native-dis" disabled>Native Button</button>' +
+      '<input id="inp-native-dis" disabled placeholder="Input">' +
+      '<a id="lnk-class-dis" class="btn disabled-link disabled">Disabled Link</a>' +
+      '<div id="div-onclick-dis" onclick="doSomething()" class="disabled">Custom Button</div>' +
+      '<span id="span-onclick-dis" onclick="doSomethingElse()" disabled>Custom Span</span>' +
+      '<button id="btn-existing-dis" disabled aria-disabled="false">Existing Aria Disabled</button>' +
+      '<button id="btn-active-tailwind" class="bg-blue-500 disabled:opacity-50 hover:bg-blue-600">Active Button</button>' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("btn-native-dis"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    const $written = cheerio.load(writtenHtml);
+
+    // Native disabled button should get aria-disabled="true"
+    expect($written("#btn-native-dis").attr("aria-disabled")).toBe("true");
+
+    // Native disabled input should get aria-disabled="true"
+    expect($written("#inp-native-dis").attr("aria-disabled")).toBe("true");
+
+    // Anchor with disabled class should get aria-disabled="true"
+    expect($written("#lnk-class-dis").attr("aria-disabled")).toBe("true");
+
+    // Custom onClick div with disabled class should get aria-disabled="true" and tabindex="-1" and role="button" but NO onkeydown click helper
+    const divOnclickDis = $written("#div-onclick-dis");
+    expect(divOnclickDis.attr("aria-disabled")).toBe("true");
+    expect(divOnclickDis.attr("tabindex")).toBe("-1");
+    expect(divOnclickDis.attr("role")).toBe("button");
+    expect(divOnclickDis.attr("onkeydown")).toBeUndefined();
+
+    // Custom onClick span with custom disabled attribute should get aria-disabled="true" and tabindex="-1" and role="button" but NO onkeydown click helper
+    const spanOnclickDis = $written("#span-onclick-dis");
+    expect(spanOnclickDis.attr("aria-disabled")).toBe("true");
+    expect(spanOnclickDis.attr("tabindex")).toBe("-1");
+    expect(spanOnclickDis.attr("role")).toBe("button");
+    expect(spanOnclickDis.attr("onkeydown")).toBeUndefined();
+
+    // Already has aria-disabled="false" - should respect and not override it
+    expect($written("#btn-existing-dis").attr("aria-disabled")).toBe("false");
+
+    // Active button with Tailwind modifier like 'disabled:opacity-50' should NOT get aria-disabled="true"
+    expect(
+      $written("#btn-active-tailwind").attr("aria-disabled"),
+    ).toBeUndefined();
+  });
 });
 
 describe("sanitizeFilename", () => {

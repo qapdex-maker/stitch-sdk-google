@@ -46,3 +46,8 @@ This journal contains only critical UX and accessibility learnings. Routine upda
 
 **Learning:** Forms in downloaded or generated screens frequently collect sensitive personal or account information (like name, email, phone, zip, country, and credentials) but completely lack semantic `autocomplete` attributes. This forces users, particularly those with physical, motor, or cognitive disabilities, to exhaustively re-type their information and limits browsers' ability to provide safe, reliable autofill (WCAG 2.1 1.3.5 - Identify Input Purpose).
 **Action:** Programmatically inspect form input and textarea elements, scan their types, ids, names, placeholders, titles, and connected labels for purpose-conveying text, and automatically assign the correct standard `autocomplete` identifier if missing.
+
+## 2026-04-09 - [Semantic Disabled State Mapping and Tailwind Modifier Isolation]
+
+**Learning:** When downloaded or dynamically-generated prototypes and screens contain disabled interactive elements (native or custom with class names matching "disabled"), they frequently lack semantic `aria-disabled="true"` markers. When mapping these programmatically, a naive regex check on classes can false-match active Tailwind modifiers (like `disabled:opacity-50` on fully active buttons).
+**Action:** Programmatically inspect class attributes by splitting them on whitespace, ignoring any class names containing a colon separator (to exclude active CSS modifiers), and applying `aria-disabled="true"` to valid disabled elements. For custom elements with `onclick`, ensure their `tabindex` is set to `"-1"` and skip adding keydown click handlers.
