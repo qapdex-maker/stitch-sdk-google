@@ -37,3 +37,11 @@
 **Learning:** Relying solely on blocklists (e.g. searching for specific directory traversal substrings) leaves room for bypasses via encoding variations or special character injections. Establishing a strict character allowlist (positive validation) is a much more secure and comprehensive approach.
 
 **Prevention:** Constrain inputs representing entity IDs (such as Google Cloud project IDs) to a strict regex allowlist pattern (e.g., `/^[a-zA-Z0-9-.:_]+$/`) and combine it with explicit relative traversal checks (e.g., rejecting any sequence containing `..`).
+
+## 2026-03-25 - Absolute and Protocol-Relative URL Injection Protection in httpPost REST Client
+
+**Vulnerability:** While `StitchToolClient.httpPost` checked for basic relative path traversal (`..` and `\`), it did not prevent inputs with leading slashes (`/`), double slashes (`//`), absolute/protocol-relative URL sequences (like `://` or `//`), or URL parsing delimiters (like `?`, `#`, or `@`). An attacker with control over the REST path segment could construct paths that completely bypass the API path routing of the Stitch baseUrl or direct requests to arbitrary external servers, potentially leading to Server-Side Request Forgery (SSRF) or API endpoint manipulation.
+
+**Learning:** Checking for standard relative directory traversal sequences (`..`) is not always sufficient when inputs are interpolated into HTTP base URLs or URLs queried via `fetch`. Path and protocol-relative manipulation can redirect the query context entirely.
+
+**Prevention:** Combine strict path traversal blocklists with absolute, leading slash, double slash, and control character delimiters checks, or enforce a strict character allowlist pattern (e.g. `^[a-zA-Z0-9-.:_/]+$`) to ensure only valid path sequences are allowed.
