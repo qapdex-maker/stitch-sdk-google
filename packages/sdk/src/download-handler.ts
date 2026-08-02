@@ -646,6 +646,37 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           }
         });
 
+        // 9. Collapsible and Toggle Controls Accessibility: Map accordion, dropdown, and menu triggers
+        // to standard ARIA attributes (aria-expanded and aria-haspopup) to communicate state to assistive tech.
+        $("button, a, [role='button'], [onclick]").each((_, el) => {
+          const $el = $(el);
+          const classAttr = $el.attr("class") || "";
+          const idAttr = $el.attr("id") || "";
+          const ariaLabel = $el.attr("aria-label") || "";
+          const titleAttr = $el.attr("title") || "";
+          const combined =
+            `${classAttr} ${idAttr} ${ariaLabel} ${titleAttr}`.toLowerCase();
+
+          // Check if it's a toggle/collapsible/dropdown/menu trigger
+          const isToggleTrigger =
+            /toggle|accordion|collapse|menu-btn|menu-trigger|hamburger/i.test(
+              combined,
+            );
+          const isDropdownTrigger = /dropdown|submenu/i.test(combined);
+
+          if (isToggleTrigger || isDropdownTrigger) {
+            if ($el.attr("aria-expanded") === undefined) {
+              $el.attr("aria-expanded", "false");
+            }
+          }
+
+          if (isDropdownTrigger || /menu/i.test(combined)) {
+            if ($el.attr("aria-haspopup") === undefined) {
+              $el.attr("aria-haspopup", "true");
+            }
+          }
+        });
+
         $('link[rel="stylesheet"]').each((_, el) => {
           const href = $(el).attr("href");
           if (href && href.startsWith("http")) {
