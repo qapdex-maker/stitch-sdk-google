@@ -1698,6 +1698,91 @@ describe("DownloadAssetsHandler", () => {
       $written("#btn-active-tailwind").attr("aria-disabled"),
     ).toBeUndefined();
   });
+
+  it("programmatically maps accordion, dropdown, and menu triggers to appropriate aria-expanded and aria-haspopup attributes", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<button id="btn-accordion" class="accordion-toggle">FAQ 1</button>' +
+      '<a id="lnk-dropdown" class="nav-dropdown-trigger" href="#">Services</a>' +
+      '<div id="div-menu" role="button" class="mobile-menu-btn">Menu</div>' +
+      '<button id="btn-existing-expanded" class="accordion-toggle" aria-expanded="true">Already Open</button>' +
+      '<a id="lnk-existing-popup" class="dropdown" aria-haspopup="listbox">Popup</a>' +
+      '<button id="btn-normal">Normal Button</button>' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("btn-accordion"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    const $written = cheerio.load(writtenHtml);
+
+    // Accordion should get aria-expanded="false"
+    const accordion = $written("#btn-accordion");
+    expect(accordion.attr("aria-expanded")).toBe("false");
+    expect(accordion.attr("aria-haspopup")).toBeUndefined();
+
+    // Dropdown trigger should get aria-expanded="false" and aria-haspopup="true"
+    const dropdown = $written("#lnk-dropdown");
+    expect(dropdown.attr("aria-expanded")).toBe("false");
+    expect(dropdown.attr("aria-haspopup")).toBe("true");
+
+    // Menu button trigger should get aria-expanded="false" and aria-haspopup="true"
+    const menu = $written("#div-menu");
+    expect(menu.attr("aria-expanded")).toBe("false");
+    expect(menu.attr("aria-haspopup")).toBe("true");
+
+    // Existing aria-expanded="true" should be respected and not overridden
+    const existingExpanded = $written("#btn-existing-expanded");
+    expect(existingExpanded.attr("aria-expanded")).toBe("true");
+
+    // Existing aria-haspopup="listbox" should be respected and not overridden
+    const existingPopup = $written("#lnk-existing-popup");
+    expect(existingPopup.attr("aria-haspopup")).toBe("listbox");
+
+    // Normal button should NOT get any toggle trigger attributes
+    const normal = $written("#btn-normal");
+    expect(normal.attr("aria-expanded")).toBeUndefined();
+    expect(normal.attr("aria-haspopup")).toBeUndefined();
+  });
 });
 
 describe("sanitizeFilename", () => {
