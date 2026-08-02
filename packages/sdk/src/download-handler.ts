@@ -21,6 +21,7 @@ import type { AnyNode } from "domhandler";
 import type { StitchToolClientSpec } from "./spec/client.js";
 import { slugify } from "./slugify.js";
 import { DownloadAssetsInputSchema } from "./spec/download.js";
+import { isSafeUrl } from "./utils.js";
 import type {
   DownloadAssetsSpec,
   DownloadAssetsInput,
@@ -199,6 +200,17 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         if (!htmlUrl) continue;
 
         await fs.mkdir(screenAssetsDir, { recursive: true });
+
+        if (!isSafeUrl(htmlUrl)) {
+          return {
+            success: false,
+            error: {
+              code: "PATH_TRAVERSAL_ATTEMPT" as any,
+              message: `Insecure URL blocked by SSRF protection: ${htmlUrl}`,
+              recoverable: false,
+            },
+          };
+        }
 
         const html = await fetch(htmlUrl).then((r) => r.text());
         const $ = cheerio.load(html);
@@ -669,6 +681,11 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         const screenshotUrl = screen.screenshot?.downloadUrl;
         if (screenshotUrl) {
           try {
+            if (!isSafeUrl(screenshotUrl)) {
+              throw new Error(
+                `Insecure screenshot URL blocked by SSRF protection: ${screenshotUrl}`,
+              );
+            }
             const screenshotRes = await fetch(screenshotUrl);
             if (!screenshotRes.ok)
               throw new Error(
@@ -806,6 +823,9 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
     resolvedTempDir: string,
     fileMode: number,
   ): Promise<void> {
+    if (!isSafeUrl(url)) {
+      throw new Error(`Insecure asset URL blocked by SSRF protection: ${url}`);
+    }
     const res = await fetch(url);
     if (!res.ok)
       throw new Error(`Asset fetch failed: ${res.status} for ${url}`);

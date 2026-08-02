@@ -45,3 +45,11 @@
 **Learning:** Checking for standard relative directory traversal sequences (`..`) is not always sufficient when inputs are interpolated into HTTP base URLs or URLs queried via `fetch`. Path and protocol-relative manipulation can redirect the query context entirely.
 
 **Prevention:** Combine strict path traversal blocklists with absolute, leading slash, double slash, and control character delimiters checks, or enforce a strict character allowlist pattern (e.g. `^[a-zA-Z0-9-.:_/]+$`) to ensure only valid path sequences are allowed.
+
+## 2026-04-01 - Server-Side Request Forgery (SSRF) Protection in HTML and Asset Download Handler
+
+**Vulnerability:** When downloading assets (e.g., image `src` and stylesheet `href` tags) from downloaded screen HTML code, the handler resolved and fetched arbitrary URLs. If a malicious screen or project contained references to local or private network resources (such as loopback IPs or cloud metadata service endpoints), the SDK runner would fetch those URLs. This exposed internal/local networks and cloud instance metadata to Server-Side Request Forgery (SSRF).
+
+**Learning:** Parsing third-party content and downloading embedded asset links poses a direct SSRF risk, especially if the code runs on developer machines or build/CI environments with local/private network access. URLs must be fully validated before any fetch call is made.
+
+**Prevention:** Implement a positive URL safety checker that parses the URL with WHATWG parser and explicitly rejects loopback IPs, private IP ranges (RFC 1918), link-local IPs, metadata service hostnames, or reserved local/internal TLDs. Apply this validation to all fetched assets, screenshots, and remote sources.
