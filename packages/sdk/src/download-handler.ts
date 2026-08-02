@@ -227,13 +227,17 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         // Setting an empty alt="" tells screen readers to gracefully ignore decorative images.
         // If there is a title attribute, fallback to title instead of an empty string.
         $("img").each((_, el) => {
-          const $el = $(el);
-          if ($el.attr("alt") === undefined) {
-            const title = $el.attr("title");
-            $el.attr("alt", title || "");
+          // OPTIMIZATION: Retrieve the direct `attribs` object from the raw element.
+          // This avoids multiple expensive Cheerio `.attr()` calls, and only wraps
+          // with `$(el)` when write is actually required.
+          const attribs = (el as any).attribs || {};
+          const alt = attribs["alt"];
+          if (alt === undefined) {
+            const title = attribs["title"];
+            $(el).attr("alt", title || "");
           }
 
-          const src = $el.attr("src");
+          const src = attribs["src"];
           if (src && src.startsWith("http")) {
             assetTasks.push(() =>
               this._downloadAndRewrite(
@@ -256,7 +260,10 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         // In addition, we read attributes directly from raw element `attribs` and parent `attribs`,
         // completely avoiding costly `.attr(...)` read lookups and `$el.parent()` wrapping allocations.
         $("button, a").each((_, el) => {
-          const $el = $(el);
+          // OPTIMIZATION: Retrieve the direct `attribs` object from the raw element.
+          // This completely avoids multiple expensive Cheerio `.attr()` calls, and only wraps
+          // with `$(el)` when writes or DOM queries are actually required.
+          const attribs = (el as any).attribs || {};
           const isLink = (el as any).name === "a";
           const attribs = (el as any).attribs || {};
 
@@ -268,12 +275,12 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           const title = attribs["title"];
           let ariaLabel = attribs["aria-label"];
           if (title && !ariaLabel) {
-            $el.attr("aria-label", title);
+            getEl().attr("aria-label", title);
             ariaLabel = title;
           } else if (!title && !ariaLabel) {
-            const svgTitle = $el.find("svg title").first().text().trim();
+            const svgTitle = getEl().find("svg title").first().text().trim();
             if (svgTitle) {
-              $el.attr("aria-label", svgTitle);
+              getEl().attr("aria-label", svgTitle);
               ariaLabel = svgTitle;
             }
           }
@@ -290,7 +297,7 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
                 ACTIVE_PATTERN.test(classAttr) ||
                 ACTIVE_PATTERN.test(parentClassAttr)
               ) {
-                $el.attr("aria-current", "page");
+                getEl().attr("aria-current", "page");
               }
             }
 
@@ -303,28 +310,28 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
               const relParts = currentRel.split(/\s+/).filter(Boolean);
               if (!relParts.includes("noopener")) relParts.push("noopener");
               if (!relParts.includes("noreferrer")) relParts.push("noreferrer");
-              $el.attr("rel", relParts.join(" "));
+              getEl().attr("rel", relParts.join(" "));
 
-              // Accessibility: append " (opens in a new tab)" to aria-label if we have some accessible name
-              const accessibleName = ariaLabel || title || $el.text().trim();
+              const accessibleName =
+                ariaLabel || title || getEl().text().trim();
               if (accessibleName) {
                 const warningText = "(opens in a new tab)";
                 if (!accessibleName.includes(warningText)) {
                   if (ariaLabel) {
-                    $el.attr("aria-label", `${ariaLabel} ${warningText}`);
+                    getEl().attr("aria-label", `${ariaLabel} ${warningText}`);
                   } else {
-                    $el.attr("aria-label", `${accessibleName} ${warningText}`);
+                    getEl().attr(
+                      "aria-label",
+                      `${accessibleName} ${warningText}`,
+                    );
                   }
                 }
               }
             }
           }
 
-          // 2. Decorative Icon Accessibility: Mark SVGs inside interactive elements (buttons/links)
-          // that already have an accessible label (has an `aria-label` or non-empty text content)
-          // with `aria-hidden="true"`. This prevents screen readers from redundantly announcing
-          // raw SVG paths or graphics when a meaningful label is already present.
-          const hasLabel = ariaLabel || $el.text().trim().length > 0;
+          // 2. Decorative Icon Accessibility
+          const hasLabel = ariaLabel || getEl().text().trim().length > 0;
           if (hasLabel) {
             $el.find("svg").each((_, svgEl) => {
               const $svg = $(svgEl);
@@ -647,7 +654,7 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
               (attribs["onclick"] !== undefined ||
                 attribs["role"] === "button")
             ) {
-              $el.attr("tabindex", "-1");
+              $(el).attr("tabindex", "-1");
             }
           }
         });
