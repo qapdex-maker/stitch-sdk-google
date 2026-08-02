@@ -21,6 +21,7 @@ import type { AnyNode } from "domhandler";
 import type { StitchToolClientSpec } from "./spec/client.js";
 import { slugify } from "./slugify.js";
 import { DownloadAssetsInputSchema } from "./spec/download.js";
+import { isSafeUrl } from "./utils.js";
 import type {
   DownloadAssetsSpec,
   DownloadAssetsInput,
@@ -44,6 +45,20 @@ async function atomicRename(src: string, dest: string): Promise<void> {
 }
 
 const CONCURRENCY_LIMIT = 5;
+
+// Hoisted regular expressions to avoid recompilation/reallocation in loops
+const ACTIVE_PATTERN = /\b(active|current|selected)\b/i;
+const SIBLING_DESC_PATTERN = /help|desc|error|hint/i;
+const REQUIRED_PATTERN = /required/i;
+const DISABLED_CLASS_PATTERN = /\bdisabled\b/i;
+const SEARCH_PATTERN = /search/i;
+const DESIGN_SYSTEM_CLEAN_PATTERN_1 = /[^a-z0-9]+/g;
+const DESIGN_SYSTEM_CLEAN_PATTERN_2 = /^_+|_+$/g;
+const AUTOCOMPLETE_USERNAME_PATTERN = /username|user_name|user-name|login/i;
+const AUTOCOMPLETE_GIVEN_NAME_PATTERN = /first[-_ ]*name|given[-_ ]*name/i;
+const AUTOCOMPLETE_FAMILY_NAME_PATTERN = /last[-_ ]*name|family[-_ ]*name|surname/i;
+const AUTOCOMPLETE_TEL_PATTERN = /phone|tel|mobile/i;
+const AUTOCOMPLETE_POSTAL_CODE_PATTERN = /postal[-_ ]*code|zip[-_ ]*code|zipcode|zip/i;
 
 /** Run async task factories with a bounded concurrency limit. */
 async function runWithConcurrency(
@@ -200,6 +215,17 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
 
         await fs.mkdir(screenAssetsDir, { recursive: true });
 
+        if (!isSafeUrl(htmlUrl)) {
+          return {
+            success: false,
+            error: {
+              code: "PATH_TRAVERSAL_ATTEMPT" as any,
+              message: `Insecure URL blocked by SSRF protection: ${htmlUrl}`,
+              recoverable: false,
+            },
+          };
+        }
+
         const html = await fetch(htmlUrl).then((r) => r.text());
         const $ = cheerio.load(html);
 
@@ -213,13 +239,17 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         // Setting an empty alt="" tells screen readers to gracefully ignore decorative images.
         // If there is a title attribute, fallback to title instead of an empty string.
         $("img").each((_, el) => {
-          const $el = $(el);
-          if ($el.attr("alt") === undefined) {
-            const title = $el.attr("title");
-            $el.attr("alt", title || "");
+          // OPTIMIZATION: Retrieve the direct `attribs` object from the raw element.
+          // This avoids multiple expensive Cheerio `.attr()` calls, and only wraps
+          // with `$(el)` when write is actually required.
+          const attribs = (el as any).attribs || {};
+          const alt = attribs["alt"];
+          if (alt === undefined) {
+            const title = attribs["title"];
+            $(el).attr("alt", title || "");
           }
 
-          const src = $el.attr("src");
+          const src = attribs["src"];
           if (src && src.startsWith("http")) {
             assetTasks.push(() =>
               this._downloadAndRewrite(
@@ -239,24 +269,30 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         // OPTIMIZATION: Merge "button, a", "a", and "a[target='_blank']" loops into a single traversal.
         // We use the zero-allocation tag-name property check `(el as any).name === "a"` to safely split
         // behavioral logic, saving multiple expensive DOM queries and element wrapping.
+        // In addition, we read attributes directly from raw element `attribs` and parent `attribs`,
+        // completely avoiding costly `.attr(...)` read lookups and `$el.parent()` wrapping allocations.
         $("button, a").each((_, el) => {
-          const $el = $(el);
+          // OPTIMIZATION: Retrieve the direct `attribs` object from the raw element.
+          // This completely avoids multiple expensive Cheerio `.attr()` calls, and only wraps
+          // with `$(el)` when writes or DOM queries are actually required.
+          const attribs = (el as any).attribs || {};
           const isLink = (el as any).name === "a";
+          const attribs = (el as any).attribs || {};
 
           // 1. Interactive Elements Accessibility: If a button or link has a `title` attribute
           // but lacks an `aria-label`, populate `aria-label` with the `title` text. This ensures
           // screen readers read a descriptive label instead of silence or cryptic child elements.
           // Also, if the button/link lacks an aria-label and title but has an inner SVG with a <title>,
           // extract it and use it as the aria-label.
-          const title = $el.attr("title");
-          let ariaLabel = $el.attr("aria-label");
+          const title = attribs["title"];
+          let ariaLabel = attribs["aria-label"];
           if (title && !ariaLabel) {
-            $el.attr("aria-label", title);
+            getEl().attr("aria-label", title);
             ariaLabel = title;
           } else if (!title && !ariaLabel) {
-            const svgTitle = $el.find("svg title").first().text().trim();
+            const svgTitle = getEl().find("svg title").first().text().trim();
             if (svgTitle) {
-              $el.attr("aria-label", svgTitle);
+              getEl().attr("aria-label", svgTitle);
               ariaLabel = svgTitle;
             }
           }
@@ -265,54 +301,54 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
             // 5a. Active Navigation Link Accessibility: Ensure active/current navigation links are programmatically
             // marked with aria-current="page" when visual indicators (e.g. classes matching "active", "current",
             // or "selected" on the link itself or its direct parent) are present and the attribute is missing.
-            if ($el.attr("aria-current") === undefined) {
-              const classAttr = $el.attr("class") || "";
-              const parentClassAttr = $el.parent().attr("class") || "";
-              const activePattern = /\b(active|current|selected)\b/i;
-
+            if (attribs["aria-current"] === undefined) {
+              const classAttr = attribs["class"] || "";
+              const parentAttribs = (el as any).parent?.attribs || {};
+              const parentClassAttr = parentAttribs["class"] || "";
               if (
-                activePattern.test(classAttr) ||
-                activePattern.test(parentClassAttr)
+                ACTIVE_PATTERN.test(classAttr) ||
+                ACTIVE_PATTERN.test(parentClassAttr)
               ) {
-                $el.attr("aria-current", "page");
+                getEl().attr("aria-current", "page");
               }
             }
 
             // 5. Links Opening in New Tabs (Accessibility & Security): Ensure links with target="_blank"
             // have safe security attributes (noopener and noreferrer) and explicitly announce to screen reader
             // users that they open in a new tab/window by appending " (opens in a new tab)" to the aria-label.
-            if ($el.attr("target") === "_blank") {
+            if (attribs["target"] === "_blank") {
               // Security: set rel="noopener noreferrer" safely
-              const currentRel = $el.attr("rel") || "";
+              const currentRel = attribs["rel"] || "";
               const relParts = currentRel.split(/\s+/).filter(Boolean);
               if (!relParts.includes("noopener")) relParts.push("noopener");
               if (!relParts.includes("noreferrer")) relParts.push("noreferrer");
-              $el.attr("rel", relParts.join(" "));
+              getEl().attr("rel", relParts.join(" "));
 
-              // Accessibility: append " (opens in a new tab)" to aria-label if we have some accessible name
-              const accessibleName = ariaLabel || title || $el.text().trim();
+              const accessibleName =
+                ariaLabel || title || getEl().text().trim();
               if (accessibleName) {
                 const warningText = "(opens in a new tab)";
                 if (!accessibleName.includes(warningText)) {
                   if (ariaLabel) {
-                    $el.attr("aria-label", `${ariaLabel} ${warningText}`);
+                    getEl().attr("aria-label", `${ariaLabel} ${warningText}`);
                   } else {
-                    $el.attr("aria-label", `${accessibleName} ${warningText}`);
+                    getEl().attr(
+                      "aria-label",
+                      `${accessibleName} ${warningText}`,
+                    );
                   }
                 }
               }
             }
           }
 
-          // 2. Decorative Icon Accessibility: Mark SVGs inside interactive elements (buttons/links)
-          // that already have an accessible label (has an `aria-label` or non-empty text content)
-          // with `aria-hidden="true"`. This prevents screen readers from redundantly announcing
-          // raw SVG paths or graphics when a meaningful label is already present.
-          const hasLabel = ariaLabel || $el.text().trim().length > 0;
+          // 2. Decorative Icon Accessibility
+          const hasLabel = ariaLabel || getEl().text().trim().length > 0;
           if (hasLabel) {
             $el.find("svg").each((_, svgEl) => {
               const $svg = $(svgEl);
-              if ($svg.attr("aria-hidden") === undefined) {
+              const svgAttribs = (svgEl as any).attribs || {};
+              if (svgAttribs["aria-hidden"] === undefined) {
                 $svg.attr("aria-hidden", "true");
               }
             });
@@ -414,12 +450,12 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
 
           const isSearchInput =
             typeAttr === "search" ||
-            /search/i.test(nameAttr) ||
-            /search/i.test(idAttr) ||
-            /search/i.test(classAttr) ||
-            /search/i.test(placeholderAttr) ||
-            /search/i.test(titleAttr) ||
-            /search/i.test(ariaLabelAttr || "");
+            SEARCH_PATTERN.test(nameAttr) ||
+            SEARCH_PATTERN.test(idAttr) ||
+            SEARCH_PATTERN.test(classAttr) ||
+            SEARCH_PATTERN.test(placeholderAttr) ||
+            SEARCH_PATTERN.test(titleAttr) ||
+            SEARCH_PATTERN.test(ariaLabelAttr || "");
 
           if (isSearchInput) {
             const hasExistingSearchLandmark =
@@ -497,23 +533,23 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
               }
             } else if (checkStr.includes("email")) {
               autoValue = "email";
-            } else if (/username|user_name|user-name|login/i.test(checkStr)) {
+            } else if (AUTOCOMPLETE_USERNAME_PATTERN.test(checkStr)) {
               autoValue = "username";
-            } else if (/first[-_ ]*name|given[-_ ]*name/i.test(checkStr)) {
+            } else if (AUTOCOMPLETE_GIVEN_NAME_PATTERN.test(checkStr)) {
               autoValue = "given-name";
             } else if (
-              /last[-_ ]*name|family[-_ ]*name|surname/i.test(checkStr)
+              AUTOCOMPLETE_FAMILY_NAME_PATTERN.test(checkStr)
             ) {
               autoValue = "family-name";
             } else if (checkStr.includes("name")) {
               autoValue = "name";
             } else if (
               typeAttr === "tel" ||
-              /phone|tel|mobile/i.test(checkStr)
+              AUTOCOMPLETE_TEL_PATTERN.test(checkStr)
             ) {
               autoValue = "tel";
             } else if (
-              /postal[-_ ]*code|zip[-_ ]*code|zipcode|zip/i.test(checkStr)
+              AUTOCOMPLETE_POSTAL_CODE_PATTERN.test(checkStr)
             ) {
               autoValue = "postal-code";
             } else if (checkStr.includes("country")) {
@@ -534,8 +570,8 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
               const siblingClassAttr = nextAttribs["class"] || "";
               const siblingIdAttr = nextAttribs["id"] || "";
               if (
-                /help|desc|error|hint/i.test(siblingClassAttr) ||
-                /help|desc|error|hint/i.test(siblingIdAttr)
+                SIBLING_DESC_PATTERN.test(siblingClassAttr) ||
+                SIBLING_DESC_PATTERN.test(siblingIdAttr)
               ) {
                 let descId = siblingIdAttr;
                 if (!descId) {
@@ -576,7 +612,7 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
 
             if (
               textToInspect.includes("*") ||
-              /required/i.test(textToInspect)
+              REQUIRED_PATTERN.test(textToInspect)
             ) {
               $(el).attr("aria-required", "true");
             }
@@ -597,28 +633,40 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         // 7. Disabled Controls Accessibility: Map native and visual disabled states to semantic aria-disabled="true"
         // for native controls, links, and custom clickable elements. If a custom clickable element is disabled,
         // we ensure it has tabindex="-1" so it cannot be focused via keyboard navigation.
+        // OPTIMIZATION: Retrieve attributes directly from raw element `attribs` and tag name `(el as any).name`,
+        // avoiding costly `.attr(...)` read lookups and `.is(...)` selector querying.
         $(
           "button, a, input, textarea, select, [onclick], [role='button']",
         ).each((_, el) => {
           const $el = $(el);
-          const hasDisabledAttr = $el.attr("disabled") !== undefined;
-          const classes = ($el.attr("class") || "").split(/\s+/);
-          const hasDisabledClass = classes.some((cls) => {
+          const attribs = (el as any).attribs || {};
+          const hasDisabledAttr = attribs["disabled"] !== undefined;
+          const classes = (attribs["class"] || "").split(/\s+/);
+          const hasDisabledClass = classes.some((cls: string) => {
             if (cls.includes(":")) return false; // Skip Tailwind modifiers like disabled:opacity-50
-            return /\bdisabled\b/i.test(cls);
+            return DISABLED_CLASS_PATTERN.test(cls);
           });
 
           if (hasDisabledAttr || hasDisabledClass) {
-            if ($el.attr("aria-disabled") === undefined) {
+            if (attribs["aria-disabled"] === undefined) {
               $el.attr("aria-disabled", "true");
             }
             // For custom non-interactive elements that act as buttons/links
+            const tagName = (el as any).name;
+            const isNativeInteractive =
+              tagName === "button" ||
+              tagName === "a" ||
+              tagName === "input" ||
+              tagName === "textarea" ||
+              tagName === "select" ||
+              tagName === "details";
+
             if (
-              !$el.is("button, a, input, textarea, select, details") &&
-              ($el.attr("onclick") !== undefined ||
-                $el.attr("role") === "button")
+              !isNativeInteractive &&
+              (attribs["onclick"] !== undefined ||
+                attribs["role"] === "button")
             ) {
-              $el.attr("tabindex", "-1");
+              $(el).attr("tabindex", "-1");
             }
           }
         });
@@ -628,17 +676,30 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         // screen-reader accessible.
         // Also ensure they are keyboard-executable by adding an `onkeydown` listener that translates
         // Enter and Space key presses into click events.
+        // OPTIMIZATION: Retrieve attributes directly from raw element `attribs` and tag name `(el as any).name`,
+        // completely avoiding `.is(...)` selection and multiple slow `.attr(...)` read lookups.
         $("[onclick]").each((_, el) => {
-          if (!$(el).is("button, a, input, select, textarea, details")) {
-            const isDisabled = $(el).attr("aria-disabled") === "true";
-            if ($(el).attr("role") === undefined) {
-              $(el).attr("role", "button");
+          const tagName = (el as any).name;
+          const isNativeInteractive =
+            tagName === "button" ||
+            tagName === "a" ||
+            tagName === "input" ||
+            tagName === "select" ||
+            tagName === "textarea" ||
+            tagName === "details";
+
+          if (!isNativeInteractive) {
+            const $el = $(el);
+            const attribs = (el as any).attribs || {};
+            const isDisabled = attribs["aria-disabled"] === "true";
+            if (attribs["role"] === undefined) {
+              $el.attr("role", "button");
             }
-            if ($(el).attr("tabindex") === undefined) {
-              $(el).attr("tabindex", isDisabled ? "-1" : "0");
+            if (attribs["tabindex"] === undefined) {
+              $el.attr("tabindex", isDisabled ? "-1" : "0");
             }
-            if ($(el).attr("onkeydown") === undefined && !isDisabled) {
-              $(el).attr(
+            if (attribs["onkeydown"] === undefined && !isDisabled) {
+              $el.attr(
                 "onkeydown",
                 "if (event.key === 'Enter' || event.key === ' ') { this.click(); event.preventDefault(); }",
               );
@@ -678,7 +739,8 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         });
 
         $('link[rel="stylesheet"]').each((_, el) => {
-          const href = $(el).attr("href");
+          const attribs = (el as any).attribs || {};
+          const href = attribs["href"];
           if (href && href.startsWith("http")) {
             assetTasks.push(() =>
               this._downloadAndRewrite(
@@ -700,6 +762,11 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         const screenshotUrl = screen.screenshot?.downloadUrl;
         if (screenshotUrl) {
           try {
+            if (!isSafeUrl(screenshotUrl)) {
+              throw new Error(
+                `Insecure screenshot URL blocked by SSRF protection: ${screenshotUrl}`,
+              );
+            }
             const screenshotRes = await fetch(screenshotUrl);
             if (!screenshotRes.ok)
               throw new Error(
@@ -757,8 +824,8 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           const dsName = ds.designSystem.displayName
             ? ds.designSystem.displayName
                 .toLowerCase()
-                .replace(/[^a-z0-9]+/g, "_")
-                .replace(/^_+|_+$/g, "")
+                .replace(DESIGN_SYSTEM_CLEAN_PATTERN_1, "_")
+                .replace(DESIGN_SYSTEM_CLEAN_PATTERN_2, "")
             : ds.name?.split("/").pop() || "design_system";
 
           const dsDir = path.resolve(resolvedOutputDir, dsName);
@@ -837,6 +904,9 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
     resolvedTempDir: string,
     fileMode: number,
   ): Promise<void> {
+    if (!isSafeUrl(url)) {
+      throw new Error(`Insecure asset URL blocked by SSRF protection: ${url}`);
+    }
     const res = await fetch(url);
     if (!res.ok)
       throw new Error(`Asset fetch failed: ${res.status} for ${url}`);
