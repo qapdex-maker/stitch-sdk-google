@@ -53,3 +53,11 @@
 **Learning:** Parsing third-party content and downloading embedded asset links poses a direct SSRF risk, especially if the code runs on developer machines or build/CI environments with local/private network access. URLs must be fully validated before any fetch call is made.
 
 **Prevention:** Implement a positive URL safety checker that parses the URL with WHATWG parser and explicitly rejects loopback IPs, private IP ranges (RFC 1918), link-local IPs, metadata service hostnames, or reserved local/internal TLDs. Apply this validation to all fetched assets, screenshots, and remote sources.
+
+## 2026-04-05 - SSRF IPv6 Mapped and Compatible IPv4 Address Bypass Protection
+
+**Vulnerability:** The SSRF URL validator `isSafeUrl` in `packages/sdk/src/utils.ts` validated standard IPv4 and IPv6 addresses. However, it did not check for IPv4-mapped IPv6 addresses (e.g. `[::ffff:127.0.0.1]` or `[::ffff:7f00:1]`) or IPv4-compatible IPv6 addresses (e.g. `[::7f00:1]`). These URLs are parsed and resolved to restricted/private networks (like loopback or link-local metadata endpoints), allowing attackers to completely bypass standard SSRF protections.
+
+**Learning:** URL normalization logic across different runtimes (Node, Bun, browser) maps complex IPv6 formats to standard colon-separated or dotted-decimal formats. Simple substring matching or protocol checks are bypassed by mapped representations. It is critical to translate mapped IPv6 representations back into their corresponding IPv4 octets to perform robust range validation.
+
+**Prevention:** Check the resolved IPv6 address for standard mapped prefixes (like `::ffff:` or compatible `::`) and extract the mapped 32-bit IPv4 address (either as dotted-decimal or hex colon segments). Convert these to standard decimal octets and run standard IPv4 range validation.
