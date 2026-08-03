@@ -1783,6 +1783,95 @@ describe("DownloadAssetsHandler", () => {
     expect(normal.attr("aria-expanded")).toBeUndefined();
     expect(normal.attr("aria-haspopup")).toBeUndefined();
   });
+
+  it("programmatically enriches close and dismiss triggers with a semantic aria-label", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<button id="btn-close-symbol">×</button>' +
+      '<button id="btn-close-word">Dismiss</button>' +
+      '<button id="btn-close-class" class="modal-close-button"></button>' +
+      '<a id="lnk-close-symbol" href="#">x</a>' +
+      '<div id="div-close-onclick" onclick="closeMe()">X</div>' +
+      '<button id="btn-close-existing-title" title="Close Overlay">x</button>' +
+      '<button id="btn-close-existing-label" aria-label="Dismiss Modal">×</button>' +
+      '<button id="btn-normal-action">Save Settings</button>' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("btn-close-symbol"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    const $written = cheerio.load(writtenHtml);
+
+    // Close symbol button gets aria-label="Close"
+    expect($written("#btn-close-symbol").attr("aria-label")).toBe("Close");
+
+    // Close word button gets aria-label="Close"
+    expect($written("#btn-close-word").attr("aria-label")).toBe("Close");
+
+    // Close class button gets aria-label="Close"
+    expect($written("#btn-close-class").attr("aria-label")).toBe("Close");
+
+    // Close link gets aria-label="Close"
+    expect($written("#lnk-close-symbol").attr("aria-label")).toBe("Close");
+
+    // Custom onClick close div gets role="button" and aria-label="Close"
+    const divClose = $written("#div-close-onclick");
+    expect(divClose.attr("role")).toBe("button");
+    expect(divClose.attr("aria-label")).toBe("Close");
+
+    // Button with existing title keeps title and gets aria-label from title
+    const btnTitle = $written("#btn-close-existing-title");
+    expect(btnTitle.attr("title")).toBe("Close Overlay");
+    expect(btnTitle.attr("aria-label")).toBe("Close Overlay");
+
+    // Button with existing aria-label preserves its custom aria-label
+    const btnLabel = $written("#btn-close-existing-label");
+    expect(btnLabel.attr("aria-label")).toBe("Dismiss Modal");
+
+    // Normal button does NOT get close aria-label
+    const btnNormal = $written("#btn-normal-action");
+    expect(btnNormal.attr("aria-label")).toBeUndefined();
+  });
 });
 
 describe("sanitizeFilename", () => {

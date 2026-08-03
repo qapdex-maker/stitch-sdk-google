@@ -56,3 +56,8 @@ This journal contains only critical UX and accessibility learnings. Routine upda
 
 **Learning:** Stitch-generated prototypes and dynamic screens frequently use collapsible accordion cards, dropdown menus, and mobile hamburger buttons that lack crucial `aria-expanded` or `aria-haspopup` attributes, leaving screen reader users unaware of the elements' collapsible/toggle states. Modifying the DOM structure by injecting visual/physical Skip Links violates CSP policies and SSR/SSG hydration boundaries, but metadata-only enrichment of existing triggers is completely safe and robust.
 **Action:** Post-process downloaded HTML by scanning interactive triggers (buttons, anchors, elements with custom roles/onclick handlers) for toggle/accordion/dropdown-conveying classes or labels, and cleanly apply non-intrusive default attributes `aria-expanded="false"` and `aria-haspopup="true"` without altering layout flow or violating strict security headers.
+
+## 2026-04-11 - [Close and Dismiss Trigger Accessibility Enrichment]
+
+**Learning:** Visual-only symbols such as "X", "x", "×", or "✗" used as close or dismiss triggers are announced literally by screen readers (e.g., "ex", "multiply"), which degrades navigation context. Checking visual symbols, text contents, and class/ID names allows us to programmatically enrich these triggers with a semantic `aria-label="Close"`, preserving any pre-existing custom labels.
+**Action:** Automatically enrich buttons, links, or custom interactive triggers with `aria-label="Close"` in post-processing when identified as close/dismiss elements and lacking a meaningful, non-symbol accessibility descriptor.
