@@ -101,6 +101,31 @@ describe("isSafeUrl SSRF Protection", () => {
       expect(isSafeUrl("http://[fd00::1]")).toBe(false);
     });
 
+    it("rejects IPv4-mapped and IPv4-compatible IPv6 addresses mapping to restricted/private IPs", () => {
+      // Loopback
+      expect(isSafeUrl("http://[::ffff:127.0.0.1]")).toBe(false);
+      expect(isSafeUrl("http://[::ffff:7f00:1]")).toBe(false);
+      expect(isSafeUrl("http://[::ffff:0:7f00:1]")).toBe(false);
+      expect(isSafeUrl("http://[::7f00:1]")).toBe(false);
+
+      // Metadata / Link-local
+      expect(isSafeUrl("http://[::ffff:169.254.169.254]")).toBe(false);
+      expect(isSafeUrl("http://[::ffff:a9fe:a9fe]")).toBe(false);
+
+      // Private range (10.x.x.x)
+      expect(isSafeUrl("http://[::ffff:10.0.0.1]")).toBe(false);
+      expect(isSafeUrl("http://[::ffff:0a00:1]")).toBe(false);
+
+      // Unspecified
+      expect(isSafeUrl("http://[::ffff:0.0.0.0]")).toBe(false);
+    });
+
+    it("allows safe public IPv4-mapped and IPv4-compatible IPv6 addresses", () => {
+      // Public IP (8.8.8.8 is 0808:0808)
+      expect(isSafeUrl("http://[::ffff:8.8.8.8]")).toBe(true);
+      expect(isSafeUrl("http://[::ffff:0808:0808]")).toBe(true);
+    });
+
     it("rejects invalid URLs gracefully", () => {
       expect(isSafeUrl("not-a-url")).toBe(false);
       expect(isSafeUrl("")).toBe(false);
