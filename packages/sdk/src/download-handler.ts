@@ -56,9 +56,15 @@ const DESIGN_SYSTEM_CLEAN_PATTERN_1 = /[^a-z0-9]+/g;
 const DESIGN_SYSTEM_CLEAN_PATTERN_2 = /^_+|_+$/g;
 const AUTOCOMPLETE_USERNAME_PATTERN = /username|user_name|user-name|login/i;
 const AUTOCOMPLETE_GIVEN_NAME_PATTERN = /first[-_ ]*name|given[-_ ]*name/i;
-const AUTOCOMPLETE_FAMILY_NAME_PATTERN = /last[-_ ]*name|family[-_ ]*name|surname/i;
+const AUTOCOMPLETE_FAMILY_NAME_PATTERN =
+  /last[-_ ]*name|family[-_ ]*name|surname/i;
 const AUTOCOMPLETE_TEL_PATTERN = /phone|tel|mobile/i;
-const AUTOCOMPLETE_POSTAL_CODE_PATTERN = /postal[-_ ]*code|zip[-_ ]*code|zipcode|zip/i;
+const AUTOCOMPLETE_POSTAL_CODE_PATTERN =
+  /postal[-_ ]*code|zip[-_ ]*code|zipcode|zip/i;
+
+const CLOSE_SYMBOL_PATTERN = /^[x×✗✕✖❌⨉]$/i;
+const CLOSE_WORD_PATTERN = /^(close|dismiss)$/i;
+const CLOSE_CLASS_ID_PATTERN = /close|dismiss|dismissable/i;
 
 /** Run async task factories with a bounded concurrency limit. */
 async function runWithConcurrency(
@@ -277,7 +283,9 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           // with `$(el)` when writes or DOM queries are actually required.
           const attribs = (el as any).attribs || {};
           const isLink = (el as any).name === "a";
-          const attribs = (el as any).attribs || {};
+
+          let $_el: cheerio.Cheerio<any> | undefined;
+          const getEl = (): cheerio.Cheerio<any> => $_el || ($_el = $(el));
 
           // 1. Interactive Elements Accessibility: If a button or link has a `title` attribute
           // but lacks an `aria-label`, populate `aria-label` with the `title` text. This ensures
@@ -294,6 +302,23 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
             if (svgTitle) {
               getEl().attr("aria-label", svgTitle);
               ariaLabel = svgTitle;
+            }
+          }
+
+          // Close/Dismiss Trigger Accessibility: Enrich triggers that visually represent "Close" or "Dismiss"
+          // with a descriptive aria-label="Close" if they lack a meaningful screen reader label or are represented
+          // by plain close symbols (e.g., 'x', 'X', '×', etc.).
+          const textContent = getEl().text().trim();
+          const isCloseSymbol = CLOSE_SYMBOL_PATTERN.test(textContent);
+          const isCloseWord = CLOSE_WORD_PATTERN.test(textContent);
+          const hasCloseClassOrId =
+            CLOSE_CLASS_ID_PATTERN.test(attribs["class"] || "") ||
+            CLOSE_CLASS_ID_PATTERN.test(attribs["id"] || "");
+
+          if (isCloseSymbol || isCloseWord || hasCloseClassOrId) {
+            if (!ariaLabel || CLOSE_SYMBOL_PATTERN.test(ariaLabel)) {
+              getEl().attr("aria-label", "Close");
+              ariaLabel = "Close";
             }
           }
 
@@ -345,13 +370,15 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           // 2. Decorative Icon Accessibility
           const hasLabel = ariaLabel || getEl().text().trim().length > 0;
           if (hasLabel) {
-            $el.find("svg").each((_, svgEl) => {
-              const $svg = $(svgEl);
-              const svgAttribs = (svgEl as any).attribs || {};
-              if (svgAttribs["aria-hidden"] === undefined) {
-                $svg.attr("aria-hidden", "true");
-              }
-            });
+            getEl()
+              .find("svg")
+              .each((_idx: number, svgEl: any) => {
+                const $svg = $(svgEl);
+                const svgAttribs = (svgEl as any).attribs || {};
+                if (svgAttribs["aria-hidden"] === undefined) {
+                  $svg.attr("aria-hidden", "true");
+                }
+              });
           }
         });
 
@@ -537,9 +564,7 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
               autoValue = "username";
             } else if (AUTOCOMPLETE_GIVEN_NAME_PATTERN.test(checkStr)) {
               autoValue = "given-name";
-            } else if (
-              AUTOCOMPLETE_FAMILY_NAME_PATTERN.test(checkStr)
-            ) {
+            } else if (AUTOCOMPLETE_FAMILY_NAME_PATTERN.test(checkStr)) {
               autoValue = "family-name";
             } else if (checkStr.includes("name")) {
               autoValue = "name";
@@ -548,9 +573,7 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
               AUTOCOMPLETE_TEL_PATTERN.test(checkStr)
             ) {
               autoValue = "tel";
-            } else if (
-              AUTOCOMPLETE_POSTAL_CODE_PATTERN.test(checkStr)
-            ) {
+            } else if (AUTOCOMPLETE_POSTAL_CODE_PATTERN.test(checkStr)) {
               autoValue = "postal-code";
             } else if (checkStr.includes("country")) {
               autoValue = "country";
@@ -663,8 +686,7 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
 
             if (
               !isNativeInteractive &&
-              (attribs["onclick"] !== undefined ||
-                attribs["role"] === "button")
+              (attribs["onclick"] !== undefined || attribs["role"] === "button")
             ) {
               $(el).attr("tabindex", "-1");
             }
@@ -703,6 +725,24 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
                 "onkeydown",
                 "if (event.key === 'Enter' || event.key === ' ') { this.click(); event.preventDefault(); }",
               );
+            }
+
+            // Close/Dismiss Trigger Accessibility for custom clickables
+            const textContent = $el.text().trim();
+            const isCloseSymbol = CLOSE_SYMBOL_PATTERN.test(textContent);
+            const isCloseWord = CLOSE_WORD_PATTERN.test(textContent);
+            const hasCloseClassOrId =
+              CLOSE_CLASS_ID_PATTERN.test(attribs["class"] || "") ||
+              CLOSE_CLASS_ID_PATTERN.test(attribs["id"] || "");
+
+            if (isCloseSymbol || isCloseWord || hasCloseClassOrId) {
+              const currentAriaLabel = attribs["aria-label"];
+              if (
+                !currentAriaLabel ||
+                CLOSE_SYMBOL_PATTERN.test(currentAriaLabel)
+              ) {
+                $el.attr("aria-label", "Close");
+              }
             }
           }
         });
