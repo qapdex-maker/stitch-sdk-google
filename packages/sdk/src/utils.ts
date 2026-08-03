@@ -126,10 +126,95 @@ export function isSafeUrl(urlStr: string): boolean {
       ) {
         return false;
       }
+
+      // Check IPv4-mapped and IPv4-compatible IPv6 addresses for SSRF bypass
+      let mappedIpParts: number[] | undefined;
+      const ffffIndex = clean.indexOf("ffff:");
+      if (ffffIndex !== -1) {
+        let ipv4Part = clean.substring(ffffIndex + 5);
+        while (ipv4Part.startsWith("0:")) {
+          ipv4Part = ipv4Part.substring(2);
+        }
+        mappedIpParts = parseIpv4MappedPart(ipv4Part);
+      } else if (clean.startsWith("::")) {
+        const ipv4Part = clean.substring(2);
+        const colonsCount = (ipv4Part.match(/:/g) || []).length;
+        if (colonsCount <= 1) {
+          mappedIpParts = parseIpv4MappedPart(ipv4Part);
+        }
+      }
+
+      if (mappedIpParts) {
+        const [o1, o2, o3, o4] = mappedIpParts;
+        if (
+          o1 === 127 || // Loopback
+          o1 === 10 || // Private 10.0.0.0/8
+          (o1 === 172 && o2 >= 16 && o2 <= 31) || // Private 172.16.0.0/12
+          (o1 === 192 && o2 === 168) || // Private 192.168.0.0/16
+          (o1 === 169 && o2 === 254) || // Link-local 169.254.0.0/16
+          o1 === 0 // Unspecified/Broadcast
+        ) {
+          return false;
+        }
+      }
     }
 
     return true;
   } catch {
     return false;
   }
+}
+
+/**
+ * Parses the IPv4 portion of an IPv4-mapped or IPv4-compatible IPv6 address.
+ * Handles both dotted-decimal (e.g. "127.0.0.1") and hex-colon (e.g. "7f00:1") representation.
+ */
+function parseIpv4MappedPart(part: string): number[] | undefined {
+  if (part.includes(".")) {
+    const parts = part.split(".");
+    if (parts.length === 4) {
+      const o1 = parseInt(parts[0], 10);
+      const o2 = parseInt(parts[1], 10);
+      const o3 = parseInt(parts[2], 10);
+      const o4 = parseInt(parts[3], 10);
+      if (
+        !isNaN(o1) &&
+        !isNaN(o2) &&
+        !isNaN(o3) &&
+        !isNaN(o4) &&
+        o1 >= 0 &&
+        o1 <= 255 &&
+        o2 >= 0 &&
+        o2 <= 255 &&
+        o3 >= 0 &&
+        o3 <= 255 &&
+        o4 >= 0 &&
+        o4 <= 255
+      ) {
+        return [o1, o2, o3, o4];
+      }
+    }
+  } else {
+    const hexSegments = part.split(":");
+    if (hexSegments.length === 2) {
+      const high = parseInt(hexSegments[0], 16);
+      const low = parseInt(hexSegments[1], 16);
+      if (
+        !isNaN(high) &&
+        !isNaN(low) &&
+        high >= 0 &&
+        high <= 0xffff &&
+        low >= 0 &&
+        low <= 0xffff
+      ) {
+        return [high >> 8, high & 255, low >> 8, low & 255];
+      }
+    } else if (hexSegments.length === 1) {
+      const low = parseInt(hexSegments[0], 16);
+      if (!isNaN(low) && low >= 0 && low <= 0xffff) {
+        return [0, 0, low >> 8, low & 255];
+      }
+    }
+  }
+  return undefined;
 }
