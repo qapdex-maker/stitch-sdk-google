@@ -62,6 +62,13 @@ const AUTOCOMPLETE_TEL_PATTERN = /phone|tel|mobile/i;
 const AUTOCOMPLETE_POSTAL_CODE_PATTERN =
   /postal[-_ ]*code|zip[-_ ]*code|zipcode|zip/i;
 
+// Inputmode patterns
+const INPUTMODE_NUMERIC_PATTERN =
+  /numeric|otp|code|cvv|cvc|pin|card[-_ ]*number|cardno|account[-_ ]*number|card[-_ ]*num/i;
+const INPUTMODE_DECIMAL_PATTERN =
+  /decimal|price|amount|cost|sum|rate|total|quantity/i;
+const INPUTMODE_URL_PATTERN = /url|website|link|href/i;
+
 const CLOSE_SYMBOL_PATTERN = /^[x×✗✕✖❌⨉]$/i;
 const CLOSE_WORD_PATTERN = /^(close|dismiss)$/i;
 const CLOSE_CLASS_ID_PATTERN = /close|dismiss|dismissable/i;
@@ -587,6 +594,43 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
 
             if (autoValue) {
               $(el).attr("autocomplete", autoValue);
+            }
+          }
+
+          // 3e. Automatically maps form input controls lacking inputmode attributes
+          // to standard inputmode values based on their type, autocomplete, id, name, placeholder, and title.
+          if ($(el).is("input") && attribs["inputmode"] === undefined) {
+            const checkStr =
+              `${typeAttr} ${attribs["autocomplete"] || ""} ${nameAttr} ${idAttr} ${placeholderAttr} ${titleAttr} ${ariaLabelAttr || ""}`.toLowerCase();
+
+            let inputModeValue: string | undefined;
+
+            if (typeAttr === "email" || checkStr.includes("email")) {
+              inputModeValue = "email";
+            } else if (
+              typeAttr === "tel" ||
+              AUTOCOMPLETE_TEL_PATTERN.test(checkStr)
+            ) {
+              inputModeValue = "tel";
+            } else if (
+              typeAttr === "url" ||
+              INPUTMODE_URL_PATTERN.test(checkStr)
+            ) {
+              inputModeValue = "url";
+            } else if (isSearchInput) {
+              inputModeValue = "search";
+            } else if (
+              typeAttr === "number" ||
+              INPUTMODE_NUMERIC_PATTERN.test(checkStr) ||
+              AUTOCOMPLETE_POSTAL_CODE_PATTERN.test(checkStr)
+            ) {
+              inputModeValue = "numeric";
+            } else if (INPUTMODE_DECIMAL_PATTERN.test(checkStr)) {
+              inputModeValue = "decimal";
+            }
+
+            if (inputModeValue) {
+              $(el).attr("inputmode", inputModeValue);
             }
           }
 
