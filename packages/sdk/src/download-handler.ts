@@ -66,6 +66,12 @@ const CLOSE_SYMBOL_PATTERN = /^[x×✗✕✖❌⨉]$/i;
 const CLOSE_WORD_PATTERN = /^(close|dismiss)$/i;
 const CLOSE_CLASS_ID_PATTERN = /close|dismiss|dismissable/i;
 
+const TOGGLE_TRIGGER_PATTERN =
+  /toggle|accordion|collapse|menu-btn|menu-trigger|hamburger/i;
+const DROPDOWN_TRIGGER_PATTERN = /dropdown|submenu/i;
+const MENU_TRIGGER_PATTERN = /menu/i;
+const STANDALONE_DISABLED_PATTERN = /(?:^|\s)disabled(?:\s|$)/i;
+
 /** Run async task factories with a bounded concurrency limit. */
 async function runWithConcurrency(
   tasks: (() => Promise<void>)[],
@@ -658,21 +664,24 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         // we ensure it has tabindex="-1" so it cannot be focused via keyboard navigation.
         // OPTIMIZATION: Retrieve attributes directly from raw element `attribs` and tag name `(el as any).name`,
         // avoiding costly `.attr(...)` read lookups and `.is(...)` selector querying.
+        // Also avoids redundant Cheerio wrapping of non-disabled elements and replaces unoptimized array/split
+        // operations with a zero-allocation RegExp match on the class attribute string.
         $(
           "button, a, input, textarea, select, [onclick], [role='button']",
         ).each((_, el) => {
-          const $el = $(el);
           const attribs = (el as any).attribs || {};
           const hasDisabledAttr = attribs["disabled"] !== undefined;
-          const classes = (attribs["class"] || "").split(/\s+/);
-          const hasDisabledClass = classes.some((cls: string) => {
-            if (cls.includes(":")) return false; // Skip Tailwind modifiers like disabled:opacity-50
-            return DISABLED_CLASS_PATTERN.test(cls);
-          });
+          const classStr = attribs["class"] || "";
+          const hasDisabledClass = classStr
+            ? STANDALONE_DISABLED_PATTERN.test(classStr)
+            : false;
 
           if (hasDisabledAttr || hasDisabledClass) {
+            let $_el: cheerio.Cheerio<any> | undefined;
+            const getEl = (): cheerio.Cheerio<any> => $_el || ($_el = $(el));
+
             if (attribs["aria-disabled"] === undefined) {
-              $el.attr("aria-disabled", "true");
+              getEl().attr("aria-disabled", "true");
             }
             // For custom non-interactive elements that act as buttons/links
             const tagName = (el as any).name;
@@ -688,7 +697,7 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
               !isNativeInteractive &&
               (attribs["onclick"] !== undefined || attribs["role"] === "button")
             ) {
-              $(el).attr("tabindex", "-1");
+              getEl().attr("tabindex", "-1");
             }
           }
         });
@@ -749,31 +758,34 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
 
         // 9. Collapsible and Toggle Controls Accessibility: Map accordion, dropdown, and menu triggers
         // to standard ARIA attributes (aria-expanded and aria-haspopup) to communicate state to assistive tech.
+        // OPTIMIZATION: Retrieve attributes directly from raw element `attribs` and use a lazy Cheerio wrapper
+        // instantiation pattern, only calling `$(el)` when programmatic write attributes need to be set.
+        // Also uses hoisted module-level RegExp constants to completely eliminate runtime re-compilation.
         $("button, a, [role='button'], [onclick]").each((_, el) => {
-          const $el = $(el);
-          const classAttr = $el.attr("class") || "";
-          const idAttr = $el.attr("id") || "";
-          const ariaLabel = $el.attr("aria-label") || "";
-          const titleAttr = $el.attr("title") || "";
+          const attribs = (el as any).attribs || {};
+          const classAttr = attribs["class"] || "";
+          const idAttr = attribs["id"] || "";
+          const ariaLabel = attribs["aria-label"] || "";
+          const titleAttr = attribs["title"] || "";
           const combined =
             `${classAttr} ${idAttr} ${ariaLabel} ${titleAttr}`.toLowerCase();
 
           // Check if it's a toggle/collapsible/dropdown/menu trigger
-          const isToggleTrigger =
-            /toggle|accordion|collapse|menu-btn|menu-trigger|hamburger/i.test(
-              combined,
-            );
-          const isDropdownTrigger = /dropdown|submenu/i.test(combined);
+          const isToggleTrigger = TOGGLE_TRIGGER_PATTERN.test(combined);
+          const isDropdownTrigger = DROPDOWN_TRIGGER_PATTERN.test(combined);
+
+          let $_el: cheerio.Cheerio<any> | undefined;
+          const getEl = (): cheerio.Cheerio<any> => $_el || ($_el = $(el));
 
           if (isToggleTrigger || isDropdownTrigger) {
-            if ($el.attr("aria-expanded") === undefined) {
-              $el.attr("aria-expanded", "false");
+            if (attribs["aria-expanded"] === undefined) {
+              getEl().attr("aria-expanded", "false");
             }
           }
 
-          if (isDropdownTrigger || /menu/i.test(combined)) {
-            if ($el.attr("aria-haspopup") === undefined) {
-              $el.attr("aria-haspopup", "true");
+          if (isDropdownTrigger || MENU_TRIGGER_PATTERN.test(combined)) {
+            if (attribs["aria-haspopup"] === undefined) {
+              getEl().attr("aria-haspopup", "true");
             }
           }
         });
