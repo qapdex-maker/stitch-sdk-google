@@ -2145,4 +2145,76 @@ describe("Project.downloadAssets() facade", () => {
     expect(result.warnings).toEqual([]);
     expect(result.screens.length).toBe(1);
   });
+
+  it("programmatically maps inputmode attribute to form controls when missing", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<input id="inp-email-im" type="email">' +
+      '<input id="inp-tel-im" type="tel">' +
+      '<input id="inp-number-im" type="number">' +
+      '<input id="inp-otp-im" placeholder="Enter OTP Code">' +
+      '<input id="inp-cvv-im" name="card_cvv">' +
+      '<input id="inp-decimal-im" title="Decimal Amount">' +
+      '<input id="inp-url-im" name="website_url">' +
+      '<input id="inp-search-im" type="search">' +
+      '<input id="inp-existing-im" inputmode="text" type="email">' +
+      '<textarea id="txt-ignored-im" placeholder="Enter comments"></textarea>' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("inp-email-im"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    const $written = cheerio.load(writtenHtml);
+
+    expect($written("#inp-email-im").attr("inputmode")).toBe("email");
+    expect($written("#inp-tel-im").attr("inputmode")).toBe("tel");
+    expect($written("#inp-number-im").attr("inputmode")).toBe("numeric");
+    expect($written("#inp-otp-im").attr("inputmode")).toBe("numeric");
+    expect($written("#inp-cvv-im").attr("inputmode")).toBe("numeric");
+    expect($written("#inp-decimal-im").attr("inputmode")).toBe("decimal");
+    expect($written("#inp-url-im").attr("inputmode")).toBe("url");
+    expect($written("#inp-search-im").attr("inputmode")).toBe("search");
+    expect($written("#inp-existing-im").attr("inputmode")).toBe("text");
+    expect($written("#txt-ignored-im").attr("inputmode")).toBeUndefined();
+  });
 });
