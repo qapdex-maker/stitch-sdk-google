@@ -50,7 +50,12 @@ export function isSafeUrl(urlStr: string): boolean {
     }
 
     // Check hostnames (case-insensitive)
-    const lowerHost = host.toLowerCase();
+    let lowerHost = host.toLowerCase();
+    // Normalize by stripping a single trailing dot if present to prevent SSRF trailing-dot bypasses
+    if (lowerHost.endsWith(".")) {
+      lowerHost = lowerHost.slice(0, -1);
+    }
+
     if (
       lowerHost === "localhost" ||
       lowerHost === "metadata" ||
@@ -71,9 +76,9 @@ export function isSafeUrl(urlStr: string): boolean {
       return false;
     }
 
-    // Check IPv4 address
-    if (/^[0-9.]+$/.test(host)) {
-      const parts = host.split(".");
+    // Check IPv4 address (using normalized lowerHost to handle trailing dot)
+    if (/^[0-9.]+$/.test(lowerHost)) {
+      const parts = lowerHost.split(".");
       if (parts.length === 4) {
         const o1 = parseInt(parts[0], 10);
         const o2 = parseInt(parts[1], 10);

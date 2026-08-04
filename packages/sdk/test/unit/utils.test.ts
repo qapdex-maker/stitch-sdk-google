@@ -49,6 +49,7 @@ describe("isSafeUrl SSRF Protection", () => {
     it("rejects loopback hostnames and IPs", () => {
       expect(isSafeUrl("http://localhost")).toBe(false);
       expect(isSafeUrl("https://LOCALHOST/abc")).toBe(false);
+      expect(isSafeUrl("http://localhost.")).toBe(false);
       expect(isSafeUrl("http://127.0.0.1")).toBe(false);
       expect(isSafeUrl("http://127.0.0.254")).toBe(false);
       expect(isSafeUrl("http://127.10.20.30")).toBe(false);
@@ -81,6 +82,7 @@ describe("isSafeUrl SSRF Protection", () => {
       expect(isSafeUrl("http://metadata")).toBe(false);
       expect(isSafeUrl("http://METADATA")).toBe(false);
       expect(isSafeUrl("http://metadata.google.internal")).toBe(false);
+      expect(isSafeUrl("http://metadata.google.internal.")).toBe(false);
       expect(isSafeUrl("http://metadata.google.internal/computeMetadata")).toBe(
         false,
       );
@@ -88,6 +90,7 @@ describe("isSafeUrl SSRF Protection", () => {
 
     it("rejects reserved local/internal TLDs and suffixes", () => {
       expect(isSafeUrl("http://service.local")).toBe(false);
+      expect(isSafeUrl("http://service.local.")).toBe(false);
       expect(isSafeUrl("http://database.internal")).toBe(false);
       expect(isSafeUrl("http://app.localhost")).toBe(false);
       expect(isSafeUrl("http://web.test")).toBe(false);
