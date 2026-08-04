@@ -61,3 +61,11 @@
 **Learning:** URL normalization logic across different runtimes (Node, Bun, browser) maps complex IPv6 formats to standard colon-separated or dotted-decimal formats. Simple substring matching or protocol checks are bypassed by mapped representations. It is critical to translate mapped IPv6 representations back into their corresponding IPv4 octets to perform robust range validation.
 
 **Prevention:** Check the resolved IPv6 address for standard mapped prefixes (like `::ffff:` or compatible `::`) and extract the mapped 32-bit IPv4 address (either as dotted-decimal or hex colon segments). Convert these to standard decimal octets and run standard IPv4 range validation.
+
+## 2026-04-10 - SSRF Trailing-Dot Hostname Bypass Protection
+
+**Vulnerability:** The SSRF URL validator `isSafeUrl` in `packages/sdk/src/utils.ts` checked hostnames against blocklists of local hostnames and private domain suffixes. However, it did not account for hostnames ending with a trailing dot (e.g., `localhost.` or `metadata.google.internal.`). Runtimes and system DNS resolvers treat trailing dots as absolute DNS names, resolving them identically to their standard names, thereby bypassing direct string blocklist checks.
+
+**Learning:** DNS resolves absolute domain names (those with a trailing dot) exactly like relative ones. However, application-level code checking string equality (`=== "localhost"`) or suffix matching (`endsWith(".local")`) is easily bypassed by absolute domain representations if trailing dots are not normalized.
+
+**Prevention:** Normalize all hostnames by stripping any single trailing dot before checking against string blocklists, suffix checks, and IP addresses.
