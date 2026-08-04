@@ -61,3 +61,8 @@ This journal contains only critical UX and accessibility learnings. Routine upda
 
 **Learning:** Visual-only symbols such as "X", "x", "×", or "✗" used as close or dismiss triggers are announced literally by screen readers (e.g., "ex", "multiply"), which degrades navigation context. Checking visual symbols, text contents, and class/ID names allows us to programmatically enrich these triggers with a semantic `aria-label="Close"`, preserving any pre-existing custom labels.
 **Action:** Automatically enrich buttons, links, or custom interactive triggers with `aria-label="Close"` in post-processing when identified as close/dismiss elements and lacking a meaningful, non-symbol accessibility descriptor.
+
+## 2026-04-12 - [Automatic Mobile Inputmode Mapping for Touch Keyboard Optimization]
+
+**Learning:** Inputs in downloaded or dynamically-generated screens often collect specific data types (such as email, telephone, URL, numbers, decimals, search queries) but lack explicit `inputmode` attributes. This forces mobile users to manually switch keyboard layouts. Programmatically analyzing input attributes lets us auto-assign mobile-optimized `inputmode` configurations safely.
+**Action:** Automatically map standard input elements lacking `inputmode` to `email`, `tel`, `url`, `search`, `numeric`, or `decimal` using hoisted regular expressions matching context clues (type, name, autocomplete, id, placeholder, and title), while preserving developer-specified `inputmode` settings.
