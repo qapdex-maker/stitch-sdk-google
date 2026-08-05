@@ -57,3 +57,8 @@
 
 **Learning:** Re-compiling/instantiating regular expressions within high-frequency loop scopes triggers unnecessary CPU and memory overhead during large document parsing. Hoisting regexes to module-level constants resolves this cleanly. Additionally, traversing to parent elements via Cheerio’s `$el.parent()` constructs redundant element wrappers. Accessing parent node attributes directly through AST-level properties (`(el as any).parent?.attribs`) avoids all parent wrapper allocations and provides a significant speedup.
 **Action:** Always hoist inline regexes to module-level constants in loops. For ancestor attribute checks inside element loop iterations, bypass Cheerio's `$el.parent().attr(...)` wrapping by utilizing AST properties (`(el as any).parent?.attribs`) directly.
+
+## 2026-11-23 - Regexp Hoisting in Helper and Handler Core Modules
+
+**Learning:** When executing high-frequency safety checks or sanitization routines (such as `isSafeUrl` or `slugify` inside asset download/upload loops), defining inline regular expressions inside function scope leads to repeated runtime compilation/instantiation and unnecessary garbage collection overhead under V8. Hoisting these patterns to the module level as constants completely eliminates this overhead.
+**Action:** Always inspect helper functions and loops for inline regular expression literals and hoist them to module-level constants to ensure zero-allocation compilation.
