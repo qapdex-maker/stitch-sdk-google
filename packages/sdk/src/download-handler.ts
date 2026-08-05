@@ -834,6 +834,62 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           }
         });
 
+        // 10. Iframe Title Accessibility: Ensure all iframe elements have a descriptive title attribute (WCAG 2.4.1 / 4.1.2)
+        // to provide screen reader users with context about the embedded content without forcing them to navigate inside.
+        $("iframe").each((_, el) => {
+          const attribs = (el as any).attribs || {};
+          const existingTitle = attribs["title"];
+          if (existingTitle === undefined || existingTitle.trim() === "") {
+            let generatedTitle = "";
+            const src = attribs["src"] || "";
+            const idAttr = attribs["id"] || "";
+            const nameAttr = attribs["name"] || "";
+
+            if (src) {
+              try {
+                const url = new URL(src, "https://dummy.com");
+                const host = url.hostname.toLowerCase();
+                if (host.includes("youtube.com") || host.includes("youtu.be")) {
+                  generatedTitle = "YouTube video player";
+                } else if (host.includes("vimeo.com")) {
+                  generatedTitle = "Vimeo video player";
+                } else if (
+                  host.includes("google.com/maps") ||
+                  host.includes("maps.google.com")
+                ) {
+                  generatedTitle = "Google Maps";
+                } else if (host.includes("facebook.com")) {
+                  generatedTitle = "Facebook embedded content";
+                } else if (host.includes("twitter.com")) {
+                  generatedTitle = "Twitter embedded content";
+                } else {
+                  let friendlyHost = host.replace(/^www\./, "");
+                  const firstPart = friendlyHost.split(".")[0];
+                  if (firstPart) {
+                    friendlyHost =
+                      firstPart.charAt(0).toUpperCase() + firstPart.slice(1);
+                  }
+                  generatedTitle = `${friendlyHost} embedded content`;
+                }
+              } catch {
+                generatedTitle = "Embedded content";
+              }
+            } else if (nameAttr) {
+              const humanized = nameAttr.replace(/[-_]/g, " ");
+              generatedTitle =
+                humanized.charAt(0).toUpperCase() + humanized.slice(1);
+            } else if (idAttr) {
+              const humanized = idAttr.replace(/[-_]/g, " ");
+              generatedTitle =
+                humanized.charAt(0).toUpperCase() + humanized.slice(1);
+            } else {
+              generatedTitle = "Embedded content";
+            }
+
+            $(el).attr("title", generatedTitle);
+          }
+        });
+
         $('link[rel="stylesheet"]').each((_, el) => {
           const attribs = (el as any).attribs || {};
           const href = attribs["href"];
