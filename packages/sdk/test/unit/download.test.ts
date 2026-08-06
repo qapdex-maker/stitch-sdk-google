@@ -1872,6 +1872,90 @@ describe("DownloadAssetsHandler", () => {
     const btnNormal = $written("#btn-normal-action");
     expect(btnNormal.attr("aria-label")).toBeUndefined();
   });
+
+  it("programmatically enriches iframe elements with descriptive title attributes", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<iframe id="if-yt" src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>' +
+      '<iframe id="if-vim" src="https://player.vimeo.com/video/12345"></iframe>' +
+      '<iframe id="if-maps" src="https://www.google.com/maps/embed?pb=123"></iframe>' +
+      '<iframe id="if-captcha" src="https://www.google.com/recaptcha/api2/anchor"></iframe>' +
+      '<iframe id="if-spot" src="https://open.spotify.com/embed/track/123"></iframe>' +
+      '<iframe id="if-fb" src="https://facebook.com/plugins/page.php"></iframe>' +
+      '<iframe id="if-tw" src="https://platform.twitter.com/widgets"></iframe>' +
+      '<iframe id="if-insta" src="https://instagram.com/p/123/embed"></iframe>' +
+      '<iframe id="chat-frame"></iframe>' +
+      '<iframe name="newsletter_signup"></iframe>' +
+      '<iframe class="no-cues"></iframe>' +
+      '<iframe id="if-existing" title="My Custom Map" src="https://www.google.com/maps"></iframe>' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("if-yt"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    const $written = cheerio.load(writtenHtml);
+
+    expect($written("#if-yt").attr("title")).toBe("YouTube video player");
+    expect($written("#if-vim").attr("title")).toBe("Vimeo video player");
+    expect($written("#if-maps").attr("title")).toBe(
+      "Google Maps interactive map",
+    );
+    expect($written("#if-captcha").attr("title")).toBe(
+      "reCAPTCHA verification",
+    );
+    expect($written("#if-spot").attr("title")).toBe("Spotify audio player");
+    expect($written("#if-fb").attr("title")).toBe("Facebook social widget");
+    expect($written("#if-tw").attr("title")).toBe("Twitter social widget");
+    expect($written("#if-insta").attr("title")).toBe("Instagram post preview");
+    expect($written("#chat-frame").attr("title")).toBe(
+      "Embedded chat frame content",
+    );
+    expect($written("iframe[name='newsletter_signup']").attr("title")).toBe(
+      "Embedded newsletter signup content",
+    );
+    expect($written(".no-cues").attr("title")).toBe("Embedded content");
+    expect($written("#if-existing").attr("title")).toBe("My Custom Map");
+  });
 });
 
 describe("sanitizeFilename", () => {
