@@ -834,6 +834,64 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           }
         });
 
+        // 10. Embedded Frame Accessibility: Ensure all <iframe> elements have a descriptive title attribute.
+        // OPTIMIZATION: Retrieve attributes directly from raw element `attribs` to bypass costly Cheerio wrapper creation.
+        $("iframe").each((_, el) => {
+          const attribs = (el as any).attribs || {};
+          const title = attribs["title"];
+          if (!title || !title.trim()) {
+            let derivedTitle = "Embedded content";
+            const src = attribs["src"] || "";
+            const id = attribs["id"] || "";
+            const name = attribs["name"] || "";
+
+            if (src) {
+              const srcLower = src.toLowerCase();
+              if (
+                srcLower.includes("youtube.com") ||
+                srcLower.includes("youtu.be")
+              ) {
+                derivedTitle = "YouTube video player";
+              } else if (srcLower.includes("vimeo.com")) {
+                derivedTitle = "Vimeo video player";
+              } else if (
+                srcLower.includes("google.com/maps") ||
+                srcLower.includes("maps.google.com")
+              ) {
+                derivedTitle = "Google Maps interactive map";
+              } else if (srcLower.includes("recaptcha")) {
+                derivedTitle = "reCAPTCHA verification";
+              } else if (srcLower.includes("spotify.com")) {
+                derivedTitle = "Spotify audio player";
+              } else if (srcLower.includes("facebook.com")) {
+                derivedTitle = "Facebook social widget";
+              } else if (
+                srcLower.includes("twitter.com") ||
+                srcLower.includes("x.com")
+              ) {
+                derivedTitle = "Twitter social widget";
+              } else if (srcLower.includes("instagram.com")) {
+                derivedTitle = "Instagram post preview";
+              }
+            }
+
+            if (derivedTitle === "Embedded content") {
+              const cue = id || name;
+              if (cue) {
+                const cleanedCue = cue
+                  .replace(/[-_]/g, " ")
+                  .trim()
+                  .replace(/\s+/g, " ");
+                if (cleanedCue) {
+                  derivedTitle = `Embedded ${cleanedCue} content`;
+                }
+              }
+            }
+
+            $(el).attr("title", derivedTitle);
+          }
+        });
+
         $('link[rel="stylesheet"]').each((_, el) => {
           const attribs = (el as any).attribs || {};
           const href = attribs["href"];

@@ -66,3 +66,8 @@ This journal contains only critical UX and accessibility learnings. Routine upda
 
 **Learning:** Inputs in downloaded or dynamically-generated screens often collect specific data types (such as email, telephone, URL, numbers, decimals, search queries) but lack explicit `inputmode` attributes. This forces mobile users to manually switch keyboard layouts. Programmatically analyzing input attributes lets us auto-assign mobile-optimized `inputmode` configurations safely.
 **Action:** Automatically map standard input elements lacking `inputmode` to `email`, `tel`, `url`, `search`, `numeric`, or `decimal` using hoisted regular expressions matching context clues (type, name, autocomplete, id, placeholder, and title), while preserving developer-specified `inputmode` settings.
+
+## 2026-04-13 - [Automatic Iframe Title Enrichment for Screen Readers]
+
+**Learning:** Automatically-generated or third-party embedded widgets (like YouTube, Vimeo, Google Maps, reCAPTCHA, etc.) inside stitch-generated screens frequently lack standard semantic `title` attributes on `<iframe>` elements. This results in screen readers being unable to explain the embedded frame context to non-visual users.
+**Action:** Programmatically parse `<iframe>` element attributes (`src`, `id`, `name`) in post-processing, and if `title` is missing, assign a descriptive title based on its domain or identifier cues, falling back to 'Embedded content' if no cues are present.
