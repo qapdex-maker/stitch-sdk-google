@@ -71,7 +71,12 @@ export function isSafeUrl(urlStr: string): boolean {
       lowerHost.endsWith(".localhost") ||
       lowerHost.endsWith(".test") ||
       lowerHost.endsWith(".invalid") ||
-      lowerHost.endsWith(".example")
+      lowerHost.endsWith(".example") ||
+      lowerHost.endsWith(".lan") ||
+      lowerHost.endsWith(".localdomain") ||
+      lowerHost.endsWith(".home") ||
+      lowerHost.endsWith(".corp") ||
+      lowerHost.endsWith(".home.arpa")
     ) {
       return false;
     }
@@ -124,12 +129,23 @@ export function isSafeUrl(urlStr: string): boolean {
       ) {
         return false;
       }
-      if (
-        clean.startsWith("fe80:") ||
-        clean.startsWith("fc00:") ||
-        clean.startsWith("fd00:")
-      ) {
-        return false;
+
+      // Parse and numerically validate the first 16-bit block of IPv6 hostnames
+      // to prevent link-local (fe80::/10) and unique local (fc00::/7) range bypasses
+      const firstColon = clean.indexOf(":");
+      if (firstColon !== -1) {
+        const firstSegment = clean.substring(0, firstColon);
+        const firstHex = parseInt(firstSegment, 16);
+        if (!isNaN(firstHex)) {
+          // Link-local: fe80::/10
+          if ((firstHex & 0xffc0) === 0xfe80) {
+            return false;
+          }
+          // Unique local / Site-local: fc00::/7
+          if ((firstHex & 0xfe00) === 0xfc00) {
+            return false;
+          }
+        }
       }
 
       // Check IPv4-mapped and IPv4-compatible IPv6 addresses for SSRF bypass
