@@ -57,3 +57,8 @@
 
 **Learning:** Re-compiling/instantiating regular expressions within high-frequency loop scopes triggers unnecessary CPU and memory overhead during large document parsing. Hoisting regexes to module-level constants resolves this cleanly. Additionally, traversing to parent elements via Cheerio’s `$el.parent()` constructs redundant element wrappers. Accessing parent node attributes directly through AST-level properties (`(el as any).parent?.attribs`) avoids all parent wrapper allocations and provides a significant speedup.
 **Action:** Always hoist inline regexes to module-level constants in loops. For ancestor attribute checks inside element loop iterations, bypass Cheerio's `$el.parent().attr(...)` wrapping by utilizing AST properties (`(el as any).parent?.attribs`) directly.
+
+## 2026-11-28 - Zero-Allocation Map/Entries Loops in Tool and SDK Adapters
+
+**Learning:** When constructing records or array maps from object properties or collections, using `Object.entries()`, `.map()`, or `Object.fromEntries()` triggers heavy heap allocations and GC churn due to the creation of intermediate entry tuples and nested arrays. This is especially impactful during tool registration/initialization or module load. Replacing these operations with standard `for...of` or `for...in` loops completely bypasses intermediate array allocations, eliminating garbage collection overhead and enhancing startup throughput.
+**Action:** Avoid `Object.entries().map()` or `Object.fromEntries(array.map())` in hot paths or initialization pathways. Build the target record/array directly using a memory-efficient `for...of` or `for...in` loop (with a prototype `hasOwnProperty` guard for objects).
