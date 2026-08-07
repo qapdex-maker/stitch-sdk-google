@@ -1872,6 +1872,103 @@ describe("DownloadAssetsHandler", () => {
     const btnNormal = $written("#btn-normal-action");
     expect(btnNormal.attr("aria-label")).toBeUndefined();
   });
+
+  it("programmatically enriches iframe elements with a descriptive, non-empty title attribute", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<iframe id="iframe-youtube" src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>' +
+      '<iframe id="iframe-vimeo" src="https://player.vimeo.com/video/12345"></iframe>' +
+      '<iframe id="iframe-maps" src="https://www.google.com/maps/embed?pb=123"></iframe>' +
+      '<iframe id="iframe-fb" src="https://www.facebook.com/plugins/page.php"></iframe>' +
+      '<iframe id="iframe-twitter" src="https://platform.twitter.com/widgets/tweet_button.html"></iframe>' +
+      '<iframe id="iframe-unknown" src="https://example.org/something"></iframe>' +
+      '<iframe id="iframe-id" src="/relative/path"></iframe>' +
+      '<iframe name="iframe-name" src=""></iframe>' +
+      '<iframe class="no-cues-iframe" src=""></iframe>' +
+      '<iframe id="iframe-existing" title="Pre-existing Title" src="https://www.youtube.com/embed/123"></iframe>' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("iframe-youtube"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    const $written = cheerio.load(writtenHtml);
+
+    // Youtube mapped to YouTube video player
+    expect($written("#iframe-youtube").attr("title")).toBe(
+      "YouTube video player",
+    );
+
+    // Vimeo mapped to Vimeo video player
+    expect($written("#iframe-vimeo").attr("title")).toBe("Vimeo video player");
+
+    // Google Maps mapped to Google Maps
+    expect($written("#iframe-maps").attr("title")).toBe("Google Maps");
+
+    // Facebook mapped to Facebook content
+    expect($written("#iframe-fb").attr("title")).toBe("Facebook content");
+
+    // Twitter mapped to Twitter content
+    expect($written("#iframe-twitter").attr("title")).toBe("Twitter content");
+
+    // Unknown mapped to derived hostname content
+    expect($written("#iframe-unknown").attr("title")).toBe(
+      "example.org content",
+    );
+
+    // Relative/invalid with ID cleaned & capitalized
+    expect($written("#iframe-id").attr("title")).toBe("Iframe Id");
+
+    // Empty src with name cleaned & capitalized
+    expect($written("[name='iframe-name']").attr("title")).toBe("Iframe Name");
+
+    // No cues mapped to Embedded content fallback
+    expect($written(".no-cues-iframe").attr("title")).toBe("Embedded content");
+
+    // Pre-existing title is not overridden
+    expect($written("#iframe-existing").attr("title")).toBe(
+      "Pre-existing Title",
+    );
+  });
 });
 
 describe("sanitizeFilename", () => {
