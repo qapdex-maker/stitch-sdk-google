@@ -703,6 +703,62 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           htmlEl.attr("lang", "en");
         }
 
+        // 8. Iframe Title Accessibility: Ensure all <iframe> elements have a descriptive, non-empty title attribute.
+        // If they lack a title, try to derive one from src, id, or name attributes, and fallback to 'Embedded content'.
+        $("iframe").each((_, el) => {
+          const attribs = (el as any).attribs || {};
+          const existingTitle = (attribs["title"] || "").trim();
+          if (!existingTitle) {
+            const src = (attribs["src"] || "").toLowerCase();
+            const id = attribs["id"] || "";
+            const name = attribs["name"] || "";
+
+            let derivedTitle = "";
+            if (src) {
+              if (src.includes("youtube.com") || src.includes("youtu.be")) {
+                derivedTitle = "YouTube video player";
+              } else if (src.includes("vimeo.com")) {
+                derivedTitle = "Vimeo video player";
+              } else if (
+                src.includes("google.com/maps") ||
+                src.includes("maps.google.com") ||
+                (src.includes("google.co") && src.includes("/maps"))
+              ) {
+                derivedTitle = "Google Maps";
+              } else if (src.includes("facebook.com")) {
+                derivedTitle = "Facebook content";
+              } else if (src.includes("twitter.com") || src.includes("x.com")) {
+                derivedTitle = "Twitter content";
+              } else {
+                try {
+                  const urlObj = new URL(src);
+                  const host = urlObj.hostname.replace("www.", "");
+                  derivedTitle = `${host} content`;
+                } catch {
+                  // Ignore invalid or relative URLs
+                }
+              }
+            }
+
+            if (!derivedTitle && (id || name)) {
+              const rawName = id || name;
+              const cleaned = rawName.replace(/[-_]/g, " ").trim();
+              if (cleaned) {
+                derivedTitle = cleaned
+                  .split(/\s+/)
+                  .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
+                  .join(" ");
+              }
+            }
+
+            if (!derivedTitle) {
+              derivedTitle = "Embedded content";
+            }
+
+            $(el).attr("title", derivedTitle);
+          }
+        });
+
         // 7. Disabled Controls Accessibility: Map native and visual disabled states to semantic aria-disabled="true"
         // for native controls, links, and custom clickable elements. If a custom clickable element is disabled,
         // we ensure it has tabindex="-1" so it cannot be focused via keyboard navigation.
