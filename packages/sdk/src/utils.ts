@@ -64,14 +64,19 @@ export function isSafeUrl(urlStr: string): boolean {
       return false;
     }
 
-    // Check reserved suffixes
+    // Check reserved suffixes and local/residential DNS suffixes
     if (
       lowerHost.endsWith(".local") ||
       lowerHost.endsWith(".internal") ||
       lowerHost.endsWith(".localhost") ||
       lowerHost.endsWith(".test") ||
       lowerHost.endsWith(".invalid") ||
-      lowerHost.endsWith(".example")
+      lowerHost.endsWith(".example") ||
+      lowerHost.endsWith(".lan") ||
+      lowerHost.endsWith(".localdomain") ||
+      lowerHost.endsWith(".home") ||
+      lowerHost.endsWith(".corp") ||
+      lowerHost.endsWith(".home.arpa")
     ) {
       return false;
     }
@@ -124,6 +129,28 @@ export function isSafeUrl(urlStr: string): boolean {
       ) {
         return false;
       }
+
+      // Dynamically validate the first 16-bit block of IPv6 addresses for Link-Local, Site-Local, and ULA ranges.
+      // - ULA (Unique Local Address): fc00::/7 (hex 0xfc00 to 0xfdff)
+      // - Link-Local/Site-Local Unicast: fe80::/10 (hex 0xfe80 to 0xfebf), or traditionally fe80::/9 (hex 0xfe80 to 0xfeff)
+      const firstColon = clean.indexOf(":");
+      if (firstColon !== -1) {
+        const firstSegment = clean.substring(0, firstColon);
+        if (firstSegment) {
+          const firstBlockNum = parseInt(firstSegment, 16);
+          if (!isNaN(firstBlockNum)) {
+            // Check ULA: fc00::/7 (0xfc00 to 0xfdff)
+            if (firstBlockNum >= 0xfc00 && firstBlockNum <= 0xfdff) {
+              return false;
+            }
+            // Check Link-Local/Site-Local: fe80::/9 (0xfe80 to 0xfeff)
+            if (firstBlockNum >= 0xfe80 && firstBlockNum <= 0xfeff) {
+              return false;
+            }
+          }
+        }
+      }
+
       if (
         clean.startsWith("fe80:") ||
         clean.startsWith("fc00:") ||

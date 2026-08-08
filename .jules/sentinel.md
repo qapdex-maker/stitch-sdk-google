@@ -69,3 +69,11 @@
 **Learning:** DNS resolves absolute domain names (those with a trailing dot) exactly like relative ones. However, application-level code checking string equality (`=== "localhost"`) or suffix matching (`endsWith(".local")`) is easily bypassed by absolute domain representations if trailing dots are not normalized.
 
 **Prevention:** Normalize all hostnames by stripping any single trailing dot before checking against string blocklists, suffix checks, and IP addresses.
+
+## 2026-04-15 - Dynamic IPv6 Subnet and Residential TLD Bypass Protection
+
+**Vulnerability:** The SSRF URL validator `isSafeUrl` in `packages/sdk/src/utils.ts` validated standard IPv6 addresses via static prefix matching (such as `startsWith("fe80:")`, `fc00:`, `fd00:`). However, this could be bypassed by slightly modified subnets like `[fc01::1]` or `[fe81::1]` which still resolve to restricted Unique Local Addresses (ULA) or Link-Local/Site-Local subnets. Furthermore, common local/residential DNS suffixes (like `.lan`, `.localdomain`, `.home`, `.corp`, and `.home.arpa`) were not blocked, enabling potential SSRF/DNS rebinding to local network devices.
+
+**Learning:** Static prefix matching on IPv6 colons is brittle and easily bypassed by subnets within the wider CIDR range (e.g. `fc00::/7` covers `fc00` to `fdff`). Converting the first 16-bit hex segment of an IPv6 address to an integer allows precise numerical boundaries to be checked safely. Combining this with blocking local/residential DNS suffixes provides solid defense-in-depth against internal network scans.
+
+**Prevention:** Parse the first 16-bit block of any parsed IPv6 host into an integer and perform numerical checks against standard range boundaries (e.g. `0xfc00` to `0xfdff` for ULA, `0xfe80` to `0xfeff` for Link-Local/Site-Local). In addition, block local TLDs like `.lan`, `.localdomain`, `.home`, `.corp`, and `.home.arpa` to mitigate DNS rebinding and internal scans.
