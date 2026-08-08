@@ -96,12 +96,19 @@ describe("isSafeUrl SSRF Protection", () => {
       expect(isSafeUrl("http://web.test")).toBe(false);
       expect(isSafeUrl("http://site.invalid")).toBe(false);
       expect(isSafeUrl("http://api.example")).toBe(false);
+      expect(isSafeUrl("http://router.lan")).toBe(false);
+      expect(isSafeUrl("http://server.localdomain")).toBe(false);
+      expect(isSafeUrl("http://service.home")).toBe(false);
+      expect(isSafeUrl("http://intranet.corp")).toBe(false);
+      expect(isSafeUrl("http://gateway.home.arpa")).toBe(false);
     });
 
     it("rejects unique local and link-local IPv6 addresses", () => {
       expect(isSafeUrl("http://[fe80::1]")).toBe(false);
       expect(isSafeUrl("http://[fc00::1]")).toBe(false);
       expect(isSafeUrl("http://[fd00::1]")).toBe(false);
+      expect(isSafeUrl("http://[fc01::1]")).toBe(false);
+      expect(isSafeUrl("http://[fe81::1]")).toBe(false);
     });
 
     it("rejects IPv4-mapped and IPv4-compatible IPv6 addresses mapping to restricted/private IPs", () => {
