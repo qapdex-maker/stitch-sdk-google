@@ -834,6 +834,61 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           }
         });
 
+        // 10. Inline Frame Accessibility: Ensure <iframe> elements that lack a non-empty `title`
+        // attribute are automatically enriched with descriptive contextual titles.
+        $("iframe").each((_, el) => {
+          const attribs = (el as any).attribs || {};
+          const title = attribs["title"]?.trim();
+          if (!title) {
+            let derivedTitle = "Embedded content";
+            const src = attribs["src"]?.trim();
+            if (src) {
+              try {
+                const urlObj = new URL(
+                  src.startsWith("//") ? `https:${src}` : src,
+                );
+                const hostname = urlObj.hostname.toLowerCase();
+                if (
+                  hostname.includes("youtube.com") ||
+                  hostname.includes("youtu.be")
+                ) {
+                  derivedTitle = "YouTube video player";
+                } else if (hostname.includes("vimeo.com")) {
+                  derivedTitle = "Vimeo video player";
+                } else if (
+                  hostname.includes("google.com") &&
+                  urlObj.pathname.includes("/maps")
+                ) {
+                  derivedTitle = "Google Maps";
+                } else if (hostname.includes("facebook.com")) {
+                  derivedTitle = "Facebook content";
+                } else if (hostname.includes("twitter.com")) {
+                  derivedTitle = "Twitter content";
+                } else {
+                  const cleanHost = hostname.replace(/^www\./, "");
+                  derivedTitle = `Embedded content from ${cleanHost}`;
+                }
+              } catch {
+                // Ignore parsing errors for relative or malformed URLs
+              }
+            }
+
+            if (derivedTitle === "Embedded content") {
+              const idAttr = attribs["id"]?.trim();
+              if (idAttr) {
+                derivedTitle = idAttr.replace(/[-_]+/g, " ");
+              } else {
+                const nameAttr = attribs["name"]?.trim();
+                if (nameAttr) {
+                  derivedTitle = nameAttr.replace(/[-_]+/g, " ");
+                }
+              }
+            }
+
+            $(el).attr("title", derivedTitle);
+          }
+        });
+
         $('link[rel="stylesheet"]').each((_, el) => {
           const attribs = (el as any).attribs || {};
           const href = attribs["href"];

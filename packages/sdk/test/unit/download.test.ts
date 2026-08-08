@@ -1872,6 +1872,107 @@ describe("DownloadAssetsHandler", () => {
     const btnNormal = $written("#btn-normal-action");
     expect(btnNormal.attr("aria-label")).toBeUndefined();
   });
+
+  it("programmatically enriches iframe elements with titles when missing", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<iframe id="ifr-existing" title="Pre-existing Title"></iframe>' +
+      '<iframe id="ifr-youtube" src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>' +
+      '<iframe id="ifr-vimeo" src="https://player.vimeo.com/video/12345"></iframe>' +
+      '<iframe id="ifr-maps" src="https://www.google.com/maps/embed?pb=!1m18"></iframe>' +
+      '<iframe id="ifr-facebook" src="https://www.facebook.com/plugins/page.php"></iframe>' +
+      '<iframe id="ifr-twitter" src="https://platform.twitter.com/widgets/tweet_button.html"></iframe>' +
+      '<iframe id="ifr-generic-host" src="https://example.com/widget"></iframe>' +
+      '<iframe id="ifr-by-id-custom-name"></iframe>' +
+      '<iframe name="my-chat-widget"></iframe>' +
+      '<iframe id="ifr-no-cues"></iframe>' +
+      "<iframe></iframe>" +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("ifr-existing"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    const $written = cheerio.load(writtenHtml);
+
+    // Existing title should be preserved
+    expect($written("#ifr-existing").attr("title")).toBe("Pre-existing Title");
+
+    // Youtube title
+    expect($written("#ifr-youtube").attr("title")).toBe("YouTube video player");
+
+    // Vimeo title
+    expect($written("#ifr-vimeo").attr("title")).toBe("Vimeo video player");
+
+    // Google Maps title
+    expect($written("#ifr-maps").attr("title")).toBe("Google Maps");
+
+    // Facebook title
+    expect($written("#ifr-facebook").attr("title")).toBe("Facebook content");
+
+    // Twitter title
+    expect($written("#ifr-twitter").attr("title")).toBe("Twitter content");
+
+    // Generic host title
+    expect($written("#ifr-generic-host").attr("title")).toBe(
+      "Embedded content from example.com",
+    );
+
+    // By ID title
+    expect($written("#ifr-by-id-custom-name").attr("title")).toBe(
+      "ifr by id custom name",
+    );
+
+    // By Name title
+    expect($written('iframe[name="my-chat-widget"]').attr("title")).toBe(
+      "my chat widget",
+    );
+
+    // No cues title
+    expect($written("#ifr-no-cues").attr("title")).toBe("ifr no cues");
+
+    // Truly no cues title
+    expect($written("iframe").last().attr("title")).toBe("Embedded content");
+  });
 });
 
 describe("sanitizeFilename", () => {
