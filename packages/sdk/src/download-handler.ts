@@ -79,6 +79,11 @@ const DROPDOWN_TRIGGER_PATTERN = /dropdown|submenu/i;
 const MENU_TRIGGER_PATTERN = /menu/i;
 const STANDALONE_DISABLED_PATTERN = /(?:^|\s)disabled(?:\s|$)/i;
 
+const STATUS_CLASS_PATTERN =
+  /(?:^|\s|-)(spinner|loader|loading|skeleton|shimmer|processing)(?:\s|-|$)/i;
+const STATUS_TEXT_PATTERN =
+  /^\s*(loading|processing|please\s+wait)\b\.{0,3}\s*$/i;
+
 /** Run async task factories with a bounded concurrency limit. */
 async function runWithConcurrency(
   tasks: (() => Promise<void>)[],
@@ -830,6 +835,45 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           if (isDropdownTrigger || MENU_TRIGGER_PATTERN.test(combined)) {
             if (attribs["aria-haspopup"] === undefined) {
               getEl().attr("aria-haspopup", "true");
+            }
+          }
+        });
+
+        // 10. Loading and Status Indicator Accessibility: Elevate visual-only loading spinners,
+        // skeleton loader blocks, shimmer overlays, or textual loading/processing messages to accessible status regions.
+        $("div, span, p, button, a").each((_, el) => {
+          const attribs = (el as any).attribs || {};
+          const classAttr = attribs["class"] || "";
+          const idAttr = attribs["id"] || "";
+
+          const hasStatusClass =
+            STATUS_CLASS_PATTERN.test(classAttr) ||
+            STATUS_CLASS_PATTERN.test(idAttr);
+
+          let $_el: cheerio.Cheerio<any> | undefined;
+          const getEl = (): cheerio.Cheerio<any> => $_el || ($_el = $(el));
+
+          const textContent = getEl().text().trim();
+          const hasStatusText = STATUS_TEXT_PATTERN.test(textContent);
+
+          if (hasStatusClass || hasStatusText) {
+            if (
+              attribs["role"] === undefined &&
+              attribs["aria-live"] === undefined &&
+              attribs["aria-busy"] === undefined
+            ) {
+              getEl().attr("role", "status");
+
+              // If it contains no visible text/children (typical for purely visual CSS or SVG loading spinners)
+              // and lacks descriptive screen-reader attributes, provide a default descriptive aria-label.
+              if (
+                !textContent &&
+                attribs["aria-label"] === undefined &&
+                attribs["title"] === undefined &&
+                attribs["aria-labelledby"] === undefined
+              ) {
+                getEl().attr("aria-label", "Loading");
+              }
             }
           }
         });

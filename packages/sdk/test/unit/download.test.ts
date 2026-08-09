@@ -2217,4 +2217,121 @@ describe("Project.downloadAssets() facade", () => {
     expect($written("#inp-existing-im").attr("inputmode")).toBe("text");
     expect($written("#txt-ignored-im").attr("inputmode")).toBeUndefined();
   });
+
+  it("programmatically tags loading and status indicators with role='status' and handles visual-only spinners", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<div id="div-spinner" class="loading-spinner"></div>' +
+      '<span id="span-loader" class="loader"></span>' +
+      '<p id="p-loading-text">Loading...</p>' +
+      '<div id="div-processing-text">Processing</div>' +
+      '<button id="btn-loader" class="btn--loading-state"></button>' +
+      '<div id="div-existing-role" class="loading-spinner" role="alert">Error loading page</div>' +
+      '<div id="div-existing-live" class="loader" aria-live="assertive">Loading data</div>' +
+      '<div id="div-existing-busy" class="loader" aria-busy="true">Loading data</div>' +
+      '<div id="div-spinner-labeled" class="spinner" aria-label="Authenticating..."></div>' +
+      '<div id="div-spinner-titled" class="spinner" title="Please wait"></div>' +
+      '<div id="div-normal">Normal container</div>' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("div-spinner"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    const $written = cheerio.load(writtenHtml);
+
+    // Empty div with spinner class gets role="status" and aria-label="Loading"
+    const divSpinner = $written("#div-spinner");
+    expect(divSpinner.attr("role")).toBe("status");
+    expect(divSpinner.attr("aria-label")).toBe("Loading");
+
+    // Empty span with loader class gets role="status" and aria-label="Loading"
+    const spanLoader = $written("#span-loader");
+    expect(spanLoader.attr("role")).toBe("status");
+    expect(spanLoader.attr("aria-label")).toBe("Loading");
+
+    // Paragraph with "Loading..." text gets role="status" but NO aria-label because it has text
+    const pLoading = $written("#p-loading-text");
+    expect(pLoading.attr("role")).toBe("status");
+    expect(pLoading.attr("aria-label")).toBeUndefined();
+
+    // Div with "Processing" text gets role="status" but NO aria-label
+    const divProcessing = $written("#div-processing-text");
+    expect(divProcessing.attr("role")).toBe("status");
+    expect(divProcessing.attr("aria-label")).toBeUndefined();
+
+    // Empty button loader gets role="status" and aria-label="Loading"
+    const btnLoader = $written("#btn-loader");
+    expect(btnLoader.attr("role")).toBe("status");
+    expect(btnLoader.attr("aria-label")).toBe("Loading");
+
+    // Existing role="alert" should be preserved
+    const existingRole = $written("#div-existing-role");
+    expect(existingRole.attr("role")).toBe("alert");
+
+    // Existing aria-live should be preserved
+    const existingLive = $written("#div-existing-live");
+    expect(existingLive.attr("role")).toBeUndefined();
+    expect(existingLive.attr("aria-live")).toBe("assertive");
+
+    // Existing aria-busy should be preserved
+    const existingBusy = $written("#div-existing-busy");
+    expect(existingBusy.attr("role")).toBeUndefined();
+    expect(existingBusy.attr("aria-busy")).toBe("true");
+
+    // Spinner with existing aria-label gets role="status" but preserves label
+    const spinnerLabeled = $written("#div-spinner-labeled");
+    expect(spinnerLabeled.attr("role")).toBe("status");
+    expect(spinnerLabeled.attr("aria-label")).toBe("Authenticating...");
+
+    // Spinner with existing title gets role="status" but preserves title and does NOT get aria-label (title serves as accessible name fallback)
+    const spinnerTitled = $written("#div-spinner-titled");
+    expect(spinnerTitled.attr("role")).toBe("status");
+    expect(spinnerTitled.attr("title")).toBe("Please wait");
+    expect(spinnerTitled.attr("aria-label")).toBeUndefined();
+
+    // Normal element should NOT get status role or loading label
+    const divNormal = $written("#div-normal");
+    expect(divNormal.attr("role")).toBeUndefined();
+    expect(divNormal.attr("aria-label")).toBeUndefined();
+  });
 });
