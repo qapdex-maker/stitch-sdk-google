@@ -69,3 +69,11 @@
 **Learning:** DNS resolves absolute domain names (those with a trailing dot) exactly like relative ones. However, application-level code checking string equality (`=== "localhost"`) or suffix matching (`endsWith(".local")`) is easily bypassed by absolute domain representations if trailing dots are not normalized.
 
 **Prevention:** Normalize all hostnames by stripping any single trailing dot before checking against string blocklists, suffix checks, and IP addresses.
+
+## 2026-04-15 - SSRF Subnet and Suffix Bypass Protection
+
+**Vulnerability:** The SSRF URL validator `isSafeUrl` in `packages/sdk/src/utils.ts` did not numerically validate the prefix block of IPv6 addresses or block common local/residential DNS suffixes like `.lan`, `.localdomain`, `.home`, `.corp`, and `.home.arpa`. This allowed attackers to construct URLs that would resolve within Link-Local (fe80::/10), Site-Local, or Unique Local (fc00::/7) ranges, or target local/residential network resources.
+
+**Learning:** IPv6 ranges are flexible and represent entire subnets. Relying solely on exact string starts-with matches can easily be bypassed by choosing a different subnet identifier within the same family (such as `fc01::` instead of `fc00::`). Numerically parsing and validating the address prefix blocks is the most comprehensive way to secure subnet boundaries.
+
+**Prevention:** Parse the first 16-bit block of IPv6 addresses numerically and validate against the known Link-Local (`0xfe80` to `0xfebf`) and ULA (`0xfc00` to `0xfdff`) ranges, while blocking local/residential DNS suffixes as defense-in-depth.

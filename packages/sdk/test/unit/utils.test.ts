@@ -102,6 +102,19 @@ describe("isSafeUrl SSRF Protection", () => {
       expect(isSafeUrl("http://[fe80::1]")).toBe(false);
       expect(isSafeUrl("http://[fc00::1]")).toBe(false);
       expect(isSafeUrl("http://[fd00::1]")).toBe(false);
+
+      // Link-local/ULA subnet range bypasses
+      expect(isSafeUrl("http://[fc01::1]")).toBe(false);
+      expect(isSafeUrl("http://[fe81::1]")).toBe(false);
+      expect(isSafeUrl("http://[fd12:3456:789a:bcde::1]")).toBe(false);
+    });
+
+    it("rejects local and residential DNS suffixes", () => {
+      expect(isSafeUrl("http://router.lan")).toBe(false);
+      expect(isSafeUrl("http://myhost.localdomain")).toBe(false);
+      expect(isSafeUrl("http://smarthome.home")).toBe(false);
+      expect(isSafeUrl("http://company.corp")).toBe(false);
+      expect(isSafeUrl("http://printer.home.arpa")).toBe(false);
     });
 
     it("rejects IPv4-mapped and IPv4-compatible IPv6 addresses mapping to restricted/private IPs", () => {
