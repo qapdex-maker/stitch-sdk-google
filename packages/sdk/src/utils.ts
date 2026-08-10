@@ -23,6 +23,12 @@
  * parseResourceName("projects/123")             // → "123"
  * parseResourceName("abc123")                   // → "abc123" (pass-through)
  */
+// Hoisted regular expressions to avoid recompilation and allocation inside hot paths
+const IPV4_CHARS_PATTERN = /^[0-9.]+$/;
+const BRACKETS_PATTERN = /^\[|\]$/g;
+const LOOPBACK_V6_PATTERN = /^0*1$/;
+const COLON_PATTERN = /:/g;
+
 export function parseResourceName(name: string): string {
   if (!name) return name;
   const lastSlashIndex = name.lastIndexOf("/");
@@ -64,20 +70,25 @@ export function isSafeUrl(urlStr: string): boolean {
       return false;
     }
 
-    // Check reserved suffixes
+    // Check reserved and common local/residential DNS suffixes as defense-in-depth
     if (
       lowerHost.endsWith(".local") ||
       lowerHost.endsWith(".internal") ||
       lowerHost.endsWith(".localhost") ||
       lowerHost.endsWith(".test") ||
       lowerHost.endsWith(".invalid") ||
-      lowerHost.endsWith(".example")
+      lowerHost.endsWith(".example") ||
+      lowerHost.endsWith(".lan") ||
+      lowerHost.endsWith(".localdomain") ||
+      lowerHost.endsWith(".home") ||
+      lowerHost.endsWith(".corp") ||
+      lowerHost.endsWith(".home.arpa")
     ) {
       return false;
     }
 
     // Check IPv4 address (using normalized lowerHost to handle trailing dot)
-    if (/^[0-9.]+$/.test(lowerHost)) {
+    if (IPV4_CHARS_PATTERN.test(lowerHost)) {
       const parts = lowerHost.split(".");
       if (parts.length === 4) {
         const o1 = parseInt(parts[0], 10);
@@ -116,20 +127,30 @@ export function isSafeUrl(urlStr: string): boolean {
 
     // Check IPv6 address
     if (host.startsWith("[") && host.endsWith("]")) {
-      const clean = lowerHost.replace(/^\[|\]$/g, "");
+      const clean = lowerHost.replace(BRACKETS_PATTERN, "");
       if (
         clean === "::1" ||
         clean === "::" ||
-        /^0*1$/.test(clean.replace(/:/g, ""))
+        LOOPBACK_V6_PATTERN.test(clean.replace(COLON_PATTERN, ""))
       ) {
         return false;
       }
-      if (
-        clean.startsWith("fe80:") ||
-        clean.startsWith("fc00:") ||
-        clean.startsWith("fd00:")
-      ) {
-        return false;
+      const firstColon = clean.indexOf(":");
+      if (firstColon !== -1) {
+        const firstSegment = clean.substring(0, firstColon);
+        if (firstSegment) {
+          const val = parseInt(firstSegment, 16);
+          if (!isNaN(val)) {
+            // Link-local & Site-local: fe80::/9 (covers fe80:: to feff::)
+            if (val >= 0xfe80 && val <= 0xfeff) {
+              return false;
+            }
+            // Unique local address (ULA): fc00::/7 (covers fc00:: to fdff::)
+            if (val >= 0xfc00 && val <= 0xfdff) {
+              return false;
+            }
+          }
+        }
       }
 
       // Check IPv4-mapped and IPv4-compatible IPv6 addresses for SSRF bypass
@@ -143,7 +164,7 @@ export function isSafeUrl(urlStr: string): boolean {
         mappedIpParts = parseIpv4MappedPart(ipv4Part);
       } else if (clean.startsWith("::")) {
         const ipv4Part = clean.substring(2);
-        const colonsCount = (ipv4Part.match(/:/g) || []).length;
+        const colonsCount = (ipv4Part.match(COLON_PATTERN) || []).length;
         if (colonsCount <= 1) {
           mappedIpParts = parseIpv4MappedPart(ipv4Part);
         }
