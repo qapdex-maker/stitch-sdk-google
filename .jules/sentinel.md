@@ -69,3 +69,8 @@
 **Learning:** DNS resolves absolute domain names (those with a trailing dot) exactly like relative ones. However, application-level code checking string equality (`=== "localhost"`) or suffix matching (`endsWith(".local")`) is easily bypassed by absolute domain representations if trailing dots are not normalized.
 
 **Prevention:** Normalize all hostnames by stripping any single trailing dot before checking against string blocklists, suffix checks, and IP addresses.
+
+## 2026-04-15 - SSRF Subnet range parsing for Link-Local and ULA IPv6 Addresses
+**Vulnerability:** The SSRF URL validator `isSafeUrl` blocked specific link-local and unique local IPv6 addresses based on literal prefix matches (like `fe80:`, `fc00:`, `fd00:`). This approach allowed bypasses on other subnet ranges within the larger Link-Local (`fe80::/10`) and Unique Local (`fc00::/7`) blocks, such as `[fe81::1]` or `[fc01::1]`. Additionally, common residential or local DNS suffixes (like `.lan`, `.localdomain`, `.home`, `.corp`, and `.home.arpa`) were not blocked, posing SSRF risks in home/local networks.
+**Learning:** Blocklists based on exact substring prefixes are easily bypassed in IPv6 subnets, where host addresses can start with variation ranges defined by subnet masks (like `/10` or `/7`). Instead of matching literal strings, the first 16-bit block should be parsed as a hex integer and verified mathematically.
+**Prevention:** Parse the first colon-separated hex block of IPv6 addresses, convert them to numbers, and validate them against correct CIDR ranges (`0xfe80` to `0xfebf` for link-local, `0xfc00` to `0xfdff` for unique local). Add common internal/local DNS suffixes to the blocklist.
