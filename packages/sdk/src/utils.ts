@@ -64,7 +64,7 @@ export function isSafeUrl(urlStr: string): boolean {
       return false;
     }
 
-    // Check reserved suffixes
+    // Check reserved and common local/residential DNS suffixes as defense-in-depth
     if (
       lowerHost.endsWith(".local") ||
       lowerHost.endsWith(".internal") ||
@@ -130,22 +130,24 @@ export function isSafeUrl(urlStr: string): boolean {
         return false;
       }
 
-      // Check wider link-local (fe80::/10) and unique local (fc00::/7) ranges
+      // Check Link-Local, Site-Local, and Unique Local Addresses (ULA)
+      // dynamically and numerically parsing the first 16-bit block
       const firstColon = clean.indexOf(":");
       if (firstColon !== -1) {
-        const firstBlockHex = clean.substring(0, firstColon);
-        const firstBlock = parseInt(firstBlockHex, 16);
+        const firstHex = clean.substring(0, firstColon);
+        const firstBlock = parseInt(firstHex, 16);
         if (!isNaN(firstBlock)) {
-          // Link-local: fe80::/10 (fe80 to febf)
+          // fe80::/10 is Link-Local (fe80 to febf)
           if (firstBlock >= 0xfe80 && firstBlock <= 0xfebf) {
             return false;
           }
-          // Unique local: fc00::/7 (fc00 to fdff)
+          // fc00::/7 is Unique Local Addresses (fc00 to fdff)
           if (firstBlock >= 0xfc00 && firstBlock <= 0xfdff) {
             return false;
           }
         }
       }
+
       if (
         clean.startsWith("fe80:") ||
         clean.startsWith("fc00:") ||
