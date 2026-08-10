@@ -57,6 +57,9 @@ export function stitchTools(options?: {
     filtered = toolDefinitions.filter((t) => includeSet.has(t.name));
   }
 
+  // OPTIMIZATION: Construct the record object directly with a single-pass loop
+  // instead of Object.fromEntries(filtered.map(...)) to completely avoid allocating
+  // intermediate arrays of entry pairs, eliminating garbage collection churn during tool initialization.
   const result: Record<string, Tool> = {};
   for (const t of filtered) {
     result[t.name] = {

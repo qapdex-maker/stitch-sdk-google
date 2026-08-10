@@ -43,25 +43,22 @@ function parseParams(schema: ToolInputSchema): ToolParam[] {
   const required = new Set(schema.required ?? []);
   const params: ToolParam[] = [];
   const props = schema.properties;
-
   if (props) {
+    // OPTIMIZATION: Avoid using Object.entries(props).map(...) to prevent allocating
+    // intermediate arrays of entry pairs, utilizing a fast, memory-efficient for-in loop.
     for (const name in props) {
       if (Object.prototype.hasOwnProperty.call(props, name)) {
         const prop = props[name];
-        const param: ToolParam = {
+        params.push({
           name,
           type: prop.type,
           description: prop.description,
           required: required.has(name),
-        };
-        if (prop.enum) {
-          param.enum = prop.enum;
-        }
-        params.push(param);
+          ...(prop.enum ? { enum: prop.enum } : {}),
+        });
       }
     }
   }
-
   return params;
 }
 
