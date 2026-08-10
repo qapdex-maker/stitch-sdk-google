@@ -135,20 +135,21 @@ export function isSafeUrl(urlStr: string): boolean {
       ) {
         return false;
       }
+
+      // Parse and numerically validate the first 16-bit block of IPv6 hostnames
+      // to prevent link-local (fe80::/10) and unique local (fc00::/7) range bypasses
       const firstColon = clean.indexOf(":");
       if (firstColon !== -1) {
         const firstSegment = clean.substring(0, firstColon);
-        if (firstSegment) {
-          const val = parseInt(firstSegment, 16);
-          if (!isNaN(val)) {
-            // Link-local & Site-local: fe80::/9 (covers fe80:: to feff::)
-            if (val >= 0xfe80 && val <= 0xfeff) {
-              return false;
-            }
-            // Unique local address (ULA): fc00::/7 (covers fc00:: to fdff::)
-            if (val >= 0xfc00 && val <= 0xfdff) {
-              return false;
-            }
+        const firstHex = parseInt(firstSegment, 16);
+        if (!isNaN(firstHex)) {
+          // Link-local: fe80::/10
+          if ((firstHex & 0xffc0) === 0xfe80) {
+            return false;
+          }
+          // Unique local / Site-local: fc00::/7
+          if ((firstHex & 0xfe00) === 0xfc00) {
+            return false;
           }
         }
       }

@@ -96,31 +96,25 @@ describe("isSafeUrl SSRF Protection", () => {
       expect(isSafeUrl("http://web.test")).toBe(false);
       expect(isSafeUrl("http://site.invalid")).toBe(false);
       expect(isSafeUrl("http://api.example")).toBe(false);
-      // New local/residential domain suffixes
-      expect(isSafeUrl("http://service.lan")).toBe(false);
-      expect(isSafeUrl("http://my.localdomain")).toBe(false);
-      expect(isSafeUrl("http://router.home")).toBe(false);
-      expect(isSafeUrl("http://server.corp")).toBe(false);
-      expect(isSafeUrl("http://gateway.home.arpa")).toBe(false);
+      expect(isSafeUrl("http://app.lan")).toBe(false);
+      expect(isSafeUrl("http://app.localdomain")).toBe(false);
+      expect(isSafeUrl("http://app.home")).toBe(false);
+      expect(isSafeUrl("http://app.corp")).toBe(false);
+      expect(isSafeUrl("http://app.home.arpa")).toBe(false);
     });
 
     it("rejects unique local and link-local IPv6 addresses", () => {
       expect(isSafeUrl("http://[fe80::1]")).toBe(false);
       expect(isSafeUrl("http://[fc00::1]")).toBe(false);
       expect(isSafeUrl("http://[fd00::1]")).toBe(false);
-
-      // Link-local/ULA subnet range bypasses
-      expect(isSafeUrl("http://[fc01::1]")).toBe(false);
+      // Test link-local and unique-local IPv6 address subnet ranges (fe80::/10, fc00::/7)
       expect(isSafeUrl("http://[fe81::1]")).toBe(false);
-      expect(isSafeUrl("http://[fd12:3456:789a:bcde::1]")).toBe(false);
-    });
-
-    it("rejects local and residential DNS suffixes", () => {
-      expect(isSafeUrl("http://router.lan")).toBe(false);
-      expect(isSafeUrl("http://myhost.localdomain")).toBe(false);
-      expect(isSafeUrl("http://smarthome.home")).toBe(false);
-      expect(isSafeUrl("http://company.corp")).toBe(false);
-      expect(isSafeUrl("http://printer.home.arpa")).toBe(false);
+      expect(isSafeUrl("http://[fe90::1]")).toBe(false);
+      expect(isSafeUrl("http://[fea0::1]")).toBe(false);
+      expect(isSafeUrl("http://[febf::1]")).toBe(false);
+      expect(isSafeUrl("http://[fc01::1]")).toBe(false);
+      expect(isSafeUrl("http://[fd01::1]")).toBe(false);
+      expect(isSafeUrl("http://[fdff::1]")).toBe(false);
     });
 
     it("rejects IPv4-mapped and IPv4-compatible IPv6 addresses mapping to restricted/private IPs", () => {

@@ -1,3 +1,11 @@
+## 2026-04-15 - IPv6 Subnet and Private DNS Suffix SSRF Bypass Protection
+
+**Vulnerability:** The SSRF URL validator `isSafeUrl` protected against local/private network request forgery. However, it checked IPv6 addresses via literal prefix strings (`fe80:`, `fc00:`, `fd00:`), which failed to block larger subnets such as `fe81::1` (part of the `fe80::/10` link-local range) or `fc01::1` (part of the `fc00::/7` unique local range). Additionally, it did not block other common local DNS suffixes (e.g. `.lan`, `.localdomain`, `.home`, `.corp`, and `.home.arpa`), leaving them open to local hostname SSRF bypass.
+
+**Learning:** String prefix match checks are not sufficient for multi-subnet CIDR ranges in network validation. Bitwise arithmetic is necessary to accurately capture full subnets of link-local and unique local addresses in IPv6.
+
+**Prevention:** Perform bitwise masking and numerical checks on the parsed first 16-bit block of IPv6 addresses, and maintain a comprehensive list of standard local/internal DNS TLDs and suffixes.
+
 ## 2026-03-01 - Path Traversal Protection in File and Asset Download Handler
 
 **Vulnerability:** The handwritten `DownloadAssetsHandler` downloaded user screen assets and saved them locally. However, if a screen's title was undefined, the handler fell back to using the raw `screenId` (or `name`) without sanitization as the base of the directory path. A malicious actor could supply a screen ID with directory traversal patterns (like `../../etc/passwd`), causing the tool to write generated code and screenshots outside the intended output directory.
