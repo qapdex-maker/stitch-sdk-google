@@ -78,6 +78,23 @@ const TOGGLE_TRIGGER_PATTERN =
 const DROPDOWN_TRIGGER_PATTERN = /dropdown|submenu/i;
 const MENU_TRIGGER_PATTERN = /menu/i;
 const STANDALONE_DISABLED_PATTERN = /(?:^|\s)disabled(?:\s|$)/i;
+const PROJECT_ID_PATTERN = /^[a-zA-Z0-9-.:_]+$/;
+
+const LOADING_CLASS_ID_PATTERN =
+  /spinner|loader|loading|skeleton|shimmer|processing/i;
+const LOADING_FALSE_POSITIVE_PATTERN =
+  /uploader|downloader|reload|preload|uploading|downloading/i;
+const LOADING_TEXT_PATTERN = /^\s*(loading|processing)(?:\s*\.{1,3})?\s*$/i;
+
+const STATUS_CLASS_PATTERN =
+  /(?:^|\s|-)(spinner|loader|loading|skeleton|shimmer|processing)(?:\s|-|$)/i;
+const STATUS_TEXT_PATTERN =
+  /^\s*(loading|processing|please\s+wait)\b\.{0,3}\s*$/i;
+
+const PROJECT_ID_PATTERN = /^[a-zA-Z0-9-.:_]+$/;
+const PATH_SEPARATOR_PATTERN = /[\/\\]/;
+const WHITESPACE_PATTERN = /\s+/;
+const SANITIZE_FILENAME_PATTERN = /[^a-zA-Z0-9_-]/g;
 
 /** Run async task factories with a bounded concurrency limit. */
 async function runWithConcurrency(
@@ -111,7 +128,7 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
       if (
         !projectId ||
         typeof projectId !== "string" ||
-        !/^[a-zA-Z0-9-.:_]+$/.test(projectId) ||
+        !PROJECT_ID_PATTERN.test(projectId) ||
         projectId.includes("..")
       ) {
         return {
@@ -148,7 +165,7 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
             };
           }
         } else {
-          if (tempDir.split(/[\/\\]/).includes("..")) {
+          if (tempDir.split(PATH_SEPARATOR_PATTERN).includes("..")) {
             return {
               success: false,
               error: {
@@ -357,7 +374,9 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
             if (attribs["target"] === "_blank") {
               // Security: set rel="noopener noreferrer" safely
               const currentRel = attribs["rel"] || "";
-              const relParts = currentRel.split(/\s+/).filter(Boolean);
+              const relParts = currentRel
+                .split(WHITESPACE_PATTERN)
+                .filter(Boolean);
               if (!relParts.includes("noopener")) relParts.push("noopener");
               if (!relParts.includes("noreferrer")) relParts.push("noreferrer");
               getEl().attr("rel", relParts.join(" "));
@@ -401,6 +420,17 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         // Before we run this, we can also perform automatic label association for nearby labels:
         // - A label element directly preceding the form control (if neither is currently associated).
         // - A checkbox/radio followed immediately by a label element (if neither is currently associated).
+        // OPTIMIZATION: Pre-compile label `for` attribute mappings to eliminate redundant global queries in hot loop.
+        const labelForMap = new Map<string, string>();
+        $("label").each((_, lbl) => {
+          const forAttr = (lbl as any).attribs?.["for"];
+          if (forAttr) {
+            const text = $(lbl).text();
+            const existing = labelForMap.get(forAttr) || "";
+            labelForMap.set(forAttr, existing ? existing + " " + text : text);
+          }
+        });
+
         let labelCounter = 1;
         let descCounter = 1;
         $("input, textarea, select").each((_, el) => {
@@ -408,6 +438,19 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           // This avoids up to 29 expensive, redundant Cheerio `.attr()` calls per element,
           // drastically reducing Cheerio wrapper creation and DOM property lookup overhead.
           const attribs = (el as any).attribs || {};
+
+          // OPTIMIZATION: Extract label ancestor info in a single low-overhead AST-based pass.
+          let parentLabelText = "";
+          let hasLabelAncestor = false;
+          let curr = (el as any).parent;
+          while (curr) {
+            if (curr.name === "label") {
+              parentLabelText = $(curr).text();
+              hasLabelAncestor = true;
+              break;
+            }
+            curr = curr.parent;
+          }
           const typeAttr = (attribs["type"] || "").toLowerCase();
           const nameAttr = attribs["name"] || "";
           const idAttr = attribs["id"] || "";
@@ -424,14 +467,14 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           const isSelect = (el as any).name === "select";
           if (!isSelect && attribs["autocomplete"] === undefined) {
             let lookupText = `${typeAttr} ${nameAttr} ${idAttr} ${placeholderAttr} ${titleAttr} ${ariaLabelAttr || ""}`;
-            const parentLabel = $(el).closest("label");
-            if (parentLabel.length > 0) {
-              lookupText += " " + parentLabel.text();
+            if (hasLabelAncestor) {
+              lookupText += " " + parentLabelText;
             }
             if (idAttr) {
-              $(`label[for="${idAttr}"]`).each((_, lbl) => {
-                lookupText += " " + $(lbl).text();
-              });
+              const lblText = labelForMap.get(idAttr);
+              if (lblText) {
+                lookupText += " " + lblText;
+              }
             }
             lookupText = lookupText.toLowerCase();
 
@@ -513,10 +556,7 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
 
           const hasAriaLabel = ariaLabelAttr !== undefined;
           const hasAriaLabelledBy = ariaLabelledByAttr !== undefined;
-          const hasLabelAncestor = $(el).closest("label").length > 0;
-          const hasForLabel = idAttr
-            ? $(`label[for="${idAttr}"]`).length > 0
-            : false;
+          const hasForLabel = idAttr ? labelForMap.has(idAttr) : false;
 
           let hasAccessibleName =
             hasAriaLabel ||
@@ -663,14 +703,14 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           if (!hasRequiredAttr && !hasAriaRequiredAttr) {
             let textToInspect = "";
 
-            const parentLabel = $(el).closest("label");
-            if (parentLabel.length > 0) {
-              textToInspect += " " + parentLabel.text();
+            if (hasLabelAncestor) {
+              textToInspect += " " + parentLabelText;
             }
             if (idAttr) {
-              $(`label[for="${idAttr}"]`).each((_, lbl) => {
-                textToInspect += " " + $(lbl).text();
-              });
+              const lblText = labelForMap.get(idAttr);
+              if (lblText) {
+                textToInspect += " " + lblText;
+              }
             }
 
             if (placeholderAttr) {
@@ -702,6 +742,62 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         if (htmlEl.length > 0 && !htmlEl.attr("lang")) {
           htmlEl.attr("lang", "en");
         }
+
+        // 8. Iframe Title Accessibility: Ensure all <iframe> elements have a descriptive, non-empty title attribute.
+        // If they lack a title, try to derive one from src, id, or name attributes, and fallback to 'Embedded content'.
+        $("iframe").each((_, el) => {
+          const attribs = (el as any).attribs || {};
+          const existingTitle = (attribs["title"] || "").trim();
+          if (!existingTitle) {
+            const src = (attribs["src"] || "").toLowerCase();
+            const id = attribs["id"] || "";
+            const name = attribs["name"] || "";
+
+            let derivedTitle = "";
+            if (src) {
+              if (src.includes("youtube.com") || src.includes("youtu.be")) {
+                derivedTitle = "YouTube video player";
+              } else if (src.includes("vimeo.com")) {
+                derivedTitle = "Vimeo video player";
+              } else if (
+                src.includes("google.com/maps") ||
+                src.includes("maps.google.com") ||
+                (src.includes("google.co") && src.includes("/maps"))
+              ) {
+                derivedTitle = "Google Maps";
+              } else if (src.includes("facebook.com")) {
+                derivedTitle = "Facebook content";
+              } else if (src.includes("twitter.com") || src.includes("x.com")) {
+                derivedTitle = "Twitter content";
+              } else {
+                try {
+                  const urlObj = new URL(src);
+                  const host = urlObj.hostname.replace("www.", "");
+                  derivedTitle = `${host} content`;
+                } catch {
+                  // Ignore invalid or relative URLs
+                }
+              }
+            }
+
+            if (!derivedTitle && (id || name)) {
+              const rawName = id || name;
+              const cleaned = rawName.replace(/[-_]/g, " ").trim();
+              if (cleaned) {
+                derivedTitle = cleaned
+                  .split(/\s+/)
+                  .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
+                  .join(" ");
+              }
+            }
+
+            if (!derivedTitle) {
+              derivedTitle = "Embedded content";
+            }
+
+            $(el).attr("title", derivedTitle);
+          }
+        });
 
         // 7. Disabled Controls Accessibility: Map native and visual disabled states to semantic aria-disabled="true"
         // for native controls, links, and custom clickable elements. If a custom clickable element is disabled,
@@ -831,6 +927,64 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
             if (attribs["aria-haspopup"] === undefined) {
               getEl().attr("aria-haspopup", "true");
             }
+          }
+        });
+
+        // 10. Embedded Frame Accessibility: Ensure all <iframe> elements have a descriptive title attribute.
+        // OPTIMIZATION: Retrieve attributes directly from raw element `attribs` to bypass costly Cheerio wrapper creation.
+        $("iframe").each((_, el) => {
+          const attribs = (el as any).attribs || {};
+          const title = attribs["title"];
+          if (!title || !title.trim()) {
+            let derivedTitle = "Embedded content";
+            const src = attribs["src"] || "";
+            const id = attribs["id"] || "";
+            const name = attribs["name"] || "";
+
+            if (src) {
+              const srcLower = src.toLowerCase();
+              if (
+                srcLower.includes("youtube.com") ||
+                srcLower.includes("youtu.be")
+              ) {
+                derivedTitle = "YouTube video player";
+              } else if (srcLower.includes("vimeo.com")) {
+                derivedTitle = "Vimeo video player";
+              } else if (
+                srcLower.includes("google.com/maps") ||
+                srcLower.includes("maps.google.com")
+              ) {
+                derivedTitle = "Google Maps interactive map";
+              } else if (srcLower.includes("recaptcha")) {
+                derivedTitle = "reCAPTCHA verification";
+              } else if (srcLower.includes("spotify.com")) {
+                derivedTitle = "Spotify audio player";
+              } else if (srcLower.includes("facebook.com")) {
+                derivedTitle = "Facebook social widget";
+              } else if (
+                srcLower.includes("twitter.com") ||
+                srcLower.includes("x.com")
+              ) {
+                derivedTitle = "Twitter social widget";
+              } else if (srcLower.includes("instagram.com")) {
+                derivedTitle = "Instagram post preview";
+              }
+            }
+
+            if (derivedTitle === "Embedded content") {
+              const cue = id || name;
+              if (cue) {
+                const cleanedCue = cue
+                  .replace(/[-_]/g, " ")
+                  .trim()
+                  .replace(/\s+/g, " ");
+                if (cleanedCue) {
+                  derivedTitle = `Embedded ${cleanedCue} content`;
+                }
+              }
+            }
+
+            $(el).attr("title", derivedTitle);
           }
         });
 
@@ -1051,5 +1205,5 @@ export function sanitizeFilename(rawFilename: string, ext: string): string {
   // OPTIMIZATION: Avoid split("").filter(...).join("") to completely eliminate
   // intermediate array allocations, memory churn, and costly character-by-character lookups.
   // Using a single-pass regular expression replace is ~6x faster and memory-efficient.
-  return base.replace(/[^a-zA-Z0-9_-]/g, "");
+  return base.replace(SANITIZE_FILENAME_PATTERN, "");
 }

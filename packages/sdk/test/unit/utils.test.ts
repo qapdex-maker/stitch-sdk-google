@@ -136,6 +136,28 @@ describe("isSafeUrl SSRF Protection", () => {
       expect(isSafeUrl("http://[::ffff:0808:0808]")).toBe(true);
     });
 
+    it("rejects IPv6 addresses with non-zero Link-Local, Site-Local, and ULA prefixes", () => {
+      // Link-local non-zero
+      expect(isSafeUrl("http://[fe81::1]")).toBe(false);
+      expect(isSafeUrl("http://[fe90::1]")).toBe(false);
+      expect(isSafeUrl("http://[febf::1]")).toBe(false);
+      // Site-local non-zero
+      expect(isSafeUrl("http://[fec1::1]")).toBe(false);
+      expect(isSafeUrl("http://[feff::1]")).toBe(false);
+      // ULA non-zero
+      expect(isSafeUrl("http://[fc01::1]")).toBe(false);
+      expect(isSafeUrl("http://[fd01::1]")).toBe(false);
+      expect(isSafeUrl("http://[fdff::1]")).toBe(false);
+    });
+
+    it("rejects additional reserved/private DNS suffixes", () => {
+      expect(isSafeUrl("http://service.lan")).toBe(false);
+      expect(isSafeUrl("http://app.localdomain")).toBe(false);
+      expect(isSafeUrl("http://router.home")).toBe(false);
+      expect(isSafeUrl("http://intranet.corp")).toBe(false);
+      expect(isSafeUrl("http://device.home.arpa")).toBe(false);
+    });
+
     it("rejects invalid URLs gracefully", () => {
       expect(isSafeUrl("not-a-url")).toBe(false);
       expect(isSafeUrl("")).toBe(false);

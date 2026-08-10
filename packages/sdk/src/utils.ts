@@ -23,12 +23,23 @@
  * parseResourceName("projects/123")             // → "123"
  * parseResourceName("abc123")                   // → "abc123" (pass-through)
  */
+// Hoisted regular expressions to avoid recompilation and allocation inside hot paths
+const IPV4_CHARS_PATTERN = /^[0-9.]+$/;
+const BRACKETS_PATTERN = /^\[|\]$/g;
+const LOOPBACK_V6_PATTERN = /^0*1$/;
+const COLON_PATTERN = /:/g;
+
 export function parseResourceName(name: string): string {
   if (!name) return name;
   const lastSlashIndex = name.lastIndexOf("/");
   if (lastSlashIndex === -1) return name;
   return name.substring(lastSlashIndex + 1);
 }
+
+const IPV4_CANDIDATE_PATTERN = /^[0-9.]+$/;
+const BRACKET_CLEAN_PATTERN = /^\[|\]$/g;
+const IPV6_LOOPBACK_PATTERN = /^0*1$/;
+const COLON_PATTERN = /:/g;
 
 /**
  * Validates whether a URL is safe from SSRF attacks (Server-Side Request Forgery).
@@ -82,7 +93,7 @@ export function isSafeUrl(urlStr: string): boolean {
     }
 
     // Check IPv4 address (using normalized lowerHost to handle trailing dot)
-    if (/^[0-9.]+$/.test(lowerHost)) {
+    if (IPV4_CANDIDATE_PATTERN.test(lowerHost)) {
       const parts = lowerHost.split(".");
       if (parts.length === 4) {
         const o1 = parseInt(parts[0], 10);
@@ -121,11 +132,11 @@ export function isSafeUrl(urlStr: string): boolean {
 
     // Check IPv6 address
     if (host.startsWith("[") && host.endsWith("]")) {
-      const clean = lowerHost.replace(/^\[|\]$/g, "");
+      const clean = lowerHost.replace(BRACKET_CLEAN_PATTERN, "");
       if (
         clean === "::1" ||
         clean === "::" ||
-        /^0*1$/.test(clean.replace(/:/g, ""))
+        IPV6_LOOPBACK_PATTERN.test(clean.replace(COLON_PATTERN, ""))
       ) {
         return false;
       }
@@ -170,7 +181,7 @@ export function isSafeUrl(urlStr: string): boolean {
         mappedIpParts = parseIpv4MappedPart(ipv4Part);
       } else if (clean.startsWith("::")) {
         const ipv4Part = clean.substring(2);
-        const colonsCount = (ipv4Part.match(/:/g) || []).length;
+        const colonsCount = (ipv4Part.match(COLON_PATTERN) || []).length;
         if (colonsCount <= 1) {
           mappedIpParts = parseIpv4MappedPart(ipv4Part);
         }

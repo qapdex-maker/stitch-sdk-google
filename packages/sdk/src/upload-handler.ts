@@ -48,6 +48,8 @@ import {
 } from "./spec/upload.js";
 import { Screen } from "../generated/src/screen.js";
 
+const PROJECT_ID_PATTERN = /^[a-zA-Z0-9-.:_]+$/;
+
 /** Build the BatchCreateScreens JSON body. */
 function buildBatchCreateScreensBody(
   projectId: string,
@@ -96,7 +98,7 @@ export class UploadHandler implements UploadSpec {
     if (
       !projectId ||
       typeof projectId !== "string" ||
-      !/^[a-zA-Z0-9-.:_]+$/.test(projectId) ||
+      !PROJECT_ID_PATTERN.test(projectId) ||
       projectId.includes("..")
     ) {
       return {
