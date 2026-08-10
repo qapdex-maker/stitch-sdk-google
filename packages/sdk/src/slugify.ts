@@ -24,9 +24,8 @@
  * @param seen - Mutable set tracking slugs already used in this batch.
  * @returns A unique, filesystem-safe slug.
  */
-// Hoisted regular expressions to avoid recompilation and allocation inside loops
-const NON_ALPHANUMERIC_PATTERN = /[^a-z0-9]+/g;
-const SURROUNDING_UNDERSCORES_PATTERN = /^_+|_+$/g;
+const NON_ALPHANUM_PATTERN = /[^a-z0-9]+/g;
+const SURROUNDING_UNDERSCORE_PATTERN = /^_+|_+$/g;
 
 export function slugify(
   title: string | undefined,
@@ -36,8 +35,8 @@ export function slugify(
   const base = title
     ? title
         .toLowerCase()
-        .replace(NON_ALPHANUMERIC_PATTERN, "_")
-        .replace(SURROUNDING_UNDERSCORES_PATTERN, "")
+        .replace(NON_ALPHANUM_PATTERN, "_")
+        .replace(SURROUNDING_UNDERSCORE_PATTERN, "")
     : "";
 
   const baseSlug = base || screenId;

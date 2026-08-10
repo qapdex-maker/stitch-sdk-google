@@ -48,7 +48,6 @@ import {
 } from "./spec/upload.js";
 import { Screen } from "../generated/src/screen.js";
 
-// Hoisted regular expressions to avoid recompilation
 const PROJECT_ID_PATTERN = /^[a-zA-Z0-9-.:_]+$/;
 
 /** Build the BatchCreateScreens JSON body. */

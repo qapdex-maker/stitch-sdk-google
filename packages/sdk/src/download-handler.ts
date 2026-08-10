@@ -91,6 +91,11 @@ const STATUS_CLASS_PATTERN =
 const STATUS_TEXT_PATTERN =
   /^\s*(loading|processing|please\s+wait)\b\.{0,3}\s*$/i;
 
+const PROJECT_ID_PATTERN = /^[a-zA-Z0-9-.:_]+$/;
+const PATH_SEPARATOR_PATTERN = /[\/\\]/;
+const WHITESPACE_PATTERN = /\s+/;
+const SANITIZE_FILENAME_PATTERN = /[^a-zA-Z0-9_-]/g;
+
 /** Run async task factories with a bounded concurrency limit. */
 async function runWithConcurrency(
   tasks: (() => Promise<void>)[],
@@ -160,7 +165,7 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
             };
           }
         } else {
-          if (tempDir.split(/[\/\\]/).includes("..")) {
+          if (tempDir.split(PATH_SEPARATOR_PATTERN).includes("..")) {
             return {
               success: false,
               error: {
@@ -369,7 +374,9 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
             if (attribs["target"] === "_blank") {
               // Security: set rel="noopener noreferrer" safely
               const currentRel = attribs["rel"] || "";
-              const relParts = currentRel.split(/\s+/).filter(Boolean);
+              const relParts = currentRel
+                .split(WHITESPACE_PATTERN)
+                .filter(Boolean);
               if (!relParts.includes("noopener")) relParts.push("noopener");
               if (!relParts.includes("noreferrer")) relParts.push("noreferrer");
               getEl().attr("rel", relParts.join(" "));
@@ -1198,5 +1205,5 @@ export function sanitizeFilename(rawFilename: string, ext: string): string {
   // OPTIMIZATION: Avoid split("").filter(...).join("") to completely eliminate
   // intermediate array allocations, memory churn, and costly character-by-character lookups.
   // Using a single-pass regular expression replace is ~6x faster and memory-efficient.
-  return base.replace(/[^a-zA-Z0-9_-]/g, "");
+  return base.replace(SANITIZE_FILENAME_PATTERN, "");
 }

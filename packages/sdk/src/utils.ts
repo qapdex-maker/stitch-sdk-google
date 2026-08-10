@@ -36,6 +36,11 @@ export function parseResourceName(name: string): string {
   return name.substring(lastSlashIndex + 1);
 }
 
+const IPV4_CANDIDATE_PATTERN = /^[0-9.]+$/;
+const BRACKET_CLEAN_PATTERN = /^\[|\]$/g;
+const IPV6_LOOPBACK_PATTERN = /^0*1$/;
+const COLON_PATTERN = /:/g;
+
 /**
  * Validates whether a URL is safe from SSRF attacks (Server-Side Request Forgery).
  * Rejects requests to loopback addresses, private IP ranges, link-local addresses,
@@ -88,7 +93,7 @@ export function isSafeUrl(urlStr: string): boolean {
     }
 
     // Check IPv4 address (using normalized lowerHost to handle trailing dot)
-    if (IPV4_CHARS_PATTERN.test(lowerHost)) {
+    if (IPV4_CANDIDATE_PATTERN.test(lowerHost)) {
       const parts = lowerHost.split(".");
       if (parts.length === 4) {
         const o1 = parseInt(parts[0], 10);
@@ -127,11 +132,11 @@ export function isSafeUrl(urlStr: string): boolean {
 
     // Check IPv6 address
     if (host.startsWith("[") && host.endsWith("]")) {
-      const clean = lowerHost.replace(BRACKETS_PATTERN, "");
+      const clean = lowerHost.replace(BRACKET_CLEAN_PATTERN, "");
       if (
         clean === "::1" ||
         clean === "::" ||
-        LOOPBACK_V6_PATTERN.test(clean.replace(COLON_PATTERN, ""))
+        IPV6_LOOPBACK_PATTERN.test(clean.replace(COLON_PATTERN, ""))
       ) {
         return false;
       }
