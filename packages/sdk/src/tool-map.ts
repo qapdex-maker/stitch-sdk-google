@@ -41,13 +41,20 @@ export interface ToolInfo extends ToolDefinition {
 /** Parse inputSchema into a flat ToolParam array. */
 function parseParams(schema: ToolInputSchema): ToolParam[] {
   const required = new Set(schema.required ?? []);
-  return Object.entries(schema.properties).map(([name, prop]) => ({
-    name,
-    type: prop.type,
-    description: prop.description,
-    required: required.has(name),
-    ...(prop.enum ? { enum: prop.enum } : {}),
-  }));
+  const params: ToolParam[] = [];
+  for (const name in schema.properties) {
+    if (Object.prototype.hasOwnProperty.call(schema.properties, name)) {
+      const prop = schema.properties[name];
+      params.push({
+        name,
+        type: prop.type,
+        description: prop.description,
+        required: required.has(name),
+        ...(prop.enum ? { enum: prop.enum } : {}),
+      });
+    }
+  }
+  return params;
 }
 
 /** Read-only map of tool names to enriched definitions for O(1) lookup. */
