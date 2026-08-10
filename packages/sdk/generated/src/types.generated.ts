@@ -4,7 +4,7 @@ DO NOT EDIT — changes will be overwritten.
 
 Source: tools-manifest.json (sha256:f20f91d571a1...)
         domain-map.json     (sha256:715639788724...)
-Generated: 2026-08-05T01:15:58.766Z
+Generated: 2026-08-05T07:49:45.291Z
  */
 
 /** A component style token in a design system. */

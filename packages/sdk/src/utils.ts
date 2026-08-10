@@ -135,31 +135,22 @@ export function isSafeUrl(urlStr: string): boolean {
       ) {
         return false;
       }
-
-      // Check Link-Local, Site-Local, and Unique Local Addresses (ULA)
-      // dynamically and numerically parsing the first 16-bit block
       const firstColon = clean.indexOf(":");
       if (firstColon !== -1) {
-        const firstHex = clean.substring(0, firstColon);
-        const firstBlock = parseInt(firstHex, 16);
-        if (!isNaN(firstBlock)) {
-          // fe80::/10 is Link-Local (fe80 to febf)
-          if (firstBlock >= 0xfe80 && firstBlock <= 0xfebf) {
-            return false;
-          }
-          // fc00::/7 is Unique Local Addresses (fc00 to fdff)
-          if (firstBlock >= 0xfc00 && firstBlock <= 0xfdff) {
-            return false;
+        const firstSegment = clean.substring(0, firstColon);
+        if (firstSegment) {
+          const val = parseInt(firstSegment, 16);
+          if (!isNaN(val)) {
+            // Link-local & Site-local: fe80::/9 (covers fe80:: to feff::)
+            if (val >= 0xfe80 && val <= 0xfeff) {
+              return false;
+            }
+            // Unique local address (ULA): fc00::/7 (covers fc00:: to fdff::)
+            if (val >= 0xfc00 && val <= 0xfdff) {
+              return false;
+            }
           }
         }
-      }
-
-      if (
-        clean.startsWith("fe80:") ||
-        clean.startsWith("fc00:") ||
-        clean.startsWith("fd00:")
-      ) {
-        return false;
       }
 
       // Check IPv4-mapped and IPv4-compatible IPv6 addresses for SSRF bypass
