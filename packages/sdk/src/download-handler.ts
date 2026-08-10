@@ -79,6 +79,12 @@ const DROPDOWN_TRIGGER_PATTERN = /dropdown|submenu/i;
 const MENU_TRIGGER_PATTERN = /menu/i;
 const STANDALONE_DISABLED_PATTERN = /(?:^|\s)disabled(?:\s|$)/i;
 
+const LOADING_CLASS_ID_PATTERN =
+  /spinner|loader|loading|skeleton|shimmer|processing/i;
+const LOADING_FALSE_POSITIVE_PATTERN =
+  /uploader|downloader|reload|preload|uploading|downloading/i;
+const LOADING_TEXT_PATTERN = /^\s*(loading|processing)(?:\s*\.{1,3})?\s*$/i;
+
 /** Run async task factories with a bounded concurrency limit. */
 async function runWithConcurrency(
   tasks: (() => Promise<void>)[],
@@ -401,6 +407,17 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         // Before we run this, we can also perform automatic label association for nearby labels:
         // - A label element directly preceding the form control (if neither is currently associated).
         // - A checkbox/radio followed immediately by a label element (if neither is currently associated).
+        // OPTIMIZATION: Pre-compile label `for` attribute mappings to eliminate redundant global queries in hot loop.
+        const labelForMap = new Map<string, string>();
+        $("label").each((_, lbl) => {
+          const forAttr = (lbl as any).attribs?.["for"];
+          if (forAttr) {
+            const text = $(lbl).text();
+            const existing = labelForMap.get(forAttr) || "";
+            labelForMap.set(forAttr, existing ? existing + " " + text : text);
+          }
+        });
+
         let labelCounter = 1;
         let descCounter = 1;
         $("input, textarea, select").each((_, el) => {
@@ -408,6 +425,19 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           // This avoids up to 29 expensive, redundant Cheerio `.attr()` calls per element,
           // drastically reducing Cheerio wrapper creation and DOM property lookup overhead.
           const attribs = (el as any).attribs || {};
+
+          // OPTIMIZATION: Extract label ancestor info in a single low-overhead AST-based pass.
+          let parentLabelText = "";
+          let hasLabelAncestor = false;
+          let curr = (el as any).parent;
+          while (curr) {
+            if (curr.name === "label") {
+              parentLabelText = $(curr).text();
+              hasLabelAncestor = true;
+              break;
+            }
+            curr = curr.parent;
+          }
           const typeAttr = (attribs["type"] || "").toLowerCase();
           const nameAttr = attribs["name"] || "";
           const idAttr = attribs["id"] || "";
@@ -424,14 +454,14 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           const isSelect = (el as any).name === "select";
           if (!isSelect && attribs["autocomplete"] === undefined) {
             let lookupText = `${typeAttr} ${nameAttr} ${idAttr} ${placeholderAttr} ${titleAttr} ${ariaLabelAttr || ""}`;
-            const parentLabel = $(el).closest("label");
-            if (parentLabel.length > 0) {
-              lookupText += " " + parentLabel.text();
+            if (hasLabelAncestor) {
+              lookupText += " " + parentLabelText;
             }
             if (idAttr) {
-              $(`label[for="${idAttr}"]`).each((_, lbl) => {
-                lookupText += " " + $(lbl).text();
-              });
+              const lblText = labelForMap.get(idAttr);
+              if (lblText) {
+                lookupText += " " + lblText;
+              }
             }
             lookupText = lookupText.toLowerCase();
 
@@ -513,10 +543,7 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
 
           const hasAriaLabel = ariaLabelAttr !== undefined;
           const hasAriaLabelledBy = ariaLabelledByAttr !== undefined;
-          const hasLabelAncestor = $(el).closest("label").length > 0;
-          const hasForLabel = idAttr
-            ? $(`label[for="${idAttr}"]`).length > 0
-            : false;
+          const hasForLabel = idAttr ? labelForMap.has(idAttr) : false;
 
           let hasAccessibleName =
             hasAriaLabel ||
@@ -663,14 +690,14 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           if (!hasRequiredAttr && !hasAriaRequiredAttr) {
             let textToInspect = "";
 
-            const parentLabel = $(el).closest("label");
-            if (parentLabel.length > 0) {
-              textToInspect += " " + parentLabel.text();
+            if (hasLabelAncestor) {
+              textToInspect += " " + parentLabelText;
             }
             if (idAttr) {
-              $(`label[for="${idAttr}"]`).each((_, lbl) => {
-                textToInspect += " " + $(lbl).text();
-              });
+              const lblText = labelForMap.get(idAttr);
+              if (lblText) {
+                textToInspect += " " + lblText;
+              }
             }
 
             if (placeholderAttr) {
@@ -830,6 +857,69 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           if (isDropdownTrigger || MENU_TRIGGER_PATTERN.test(combined)) {
             if (attribs["aria-haspopup"] === undefined) {
               getEl().attr("aria-haspopup", "true");
+            }
+          }
+        });
+
+        // 10. Loading Indicator Accessibility: Elevate visual loading indicators to accessible regions.
+        // A. Process elements with specific loading/spinner classes or IDs
+        $("[class], [id]").each((_, el) => {
+          const attribs = (el as any).attribs || {};
+          const classAttr = attribs["class"] || "";
+          const idAttr = attribs["id"] || "";
+
+          const isCandidate =
+            LOADING_CLASS_ID_PATTERN.test(classAttr) ||
+            LOADING_CLASS_ID_PATTERN.test(idAttr);
+
+          if (isCandidate) {
+            // Exclude false positives like "uploader", "downloader", "reload", "preload"
+            const isFalsePositive =
+              LOADING_FALSE_POSITIVE_PATTERN.test(classAttr) ||
+              LOADING_FALSE_POSITIVE_PATTERN.test(idAttr);
+
+            if (!isFalsePositive) {
+              const $el = $(el);
+              if (attribs["role"] === undefined) {
+                $el.attr("role", "status");
+              }
+
+              const text = $el.text().trim();
+              const hasAriaLabel = attribs["aria-label"] !== undefined;
+              const hasAriaLabelledBy =
+                attribs["aria-labelledby"] !== undefined;
+              const hasTitle = attribs["title"] !== undefined;
+
+              if (
+                text.length === 0 &&
+                !hasAriaLabel &&
+                !hasAriaLabelledBy &&
+                !hasTitle
+              ) {
+                $el.attr("aria-label", "Loading");
+              }
+            }
+          }
+        });
+
+        // B. Process leaf text elements (span, p, button) containing loading/processing text
+        $("span, p, button").each((_, el) => {
+          const children = (el as any).children || [];
+          const hasElementChildren = children.some(
+            (child: any) => child.type === "tag",
+          );
+
+          if (!hasElementChildren) {
+            const $el = $(el);
+            const text = $el.text().trim();
+            if (LOADING_TEXT_PATTERN.test(text)) {
+              // Ensure we exclude false positives in text content too
+              if (!LOADING_FALSE_POSITIVE_PATTERN.test(text)) {
+                const attribs = (el as any).attribs || {};
+                if (attribs["role"] === undefined) {
+                  $el.attr("role", "status");
+                }
+              }
             }
           }
         });

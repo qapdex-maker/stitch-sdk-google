@@ -96,6 +96,12 @@ describe("isSafeUrl SSRF Protection", () => {
       expect(isSafeUrl("http://web.test")).toBe(false);
       expect(isSafeUrl("http://site.invalid")).toBe(false);
       expect(isSafeUrl("http://api.example")).toBe(false);
+      // New local/residential domain suffixes
+      expect(isSafeUrl("http://service.lan")).toBe(false);
+      expect(isSafeUrl("http://my.localdomain")).toBe(false);
+      expect(isSafeUrl("http://router.home")).toBe(false);
+      expect(isSafeUrl("http://server.corp")).toBe(false);
+      expect(isSafeUrl("http://gateway.home.arpa")).toBe(false);
     });
 
     it("rejects unique local and link-local IPv6 addresses", () => {
