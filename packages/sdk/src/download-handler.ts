@@ -867,42 +867,58 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           }
         });
 
-        // 10. Loading and Status Indicator Accessibility: Elevate visual-only loading spinners,
-        // skeleton loader blocks, shimmer overlays, or textual loading/processing messages to accessible status regions.
-        $("div, span, p, button, a").each((_, el) => {
+        // 10. Inline Frame Accessibility: Ensure <iframe> elements that lack a non-empty `title`
+        // attribute are automatically enriched with descriptive contextual titles.
+        $("iframe").each((_, el) => {
           const attribs = (el as any).attribs || {};
-          const classAttr = attribs["class"] || "";
-          const idAttr = attribs["id"] || "";
-
-          const hasStatusClass =
-            STATUS_CLASS_PATTERN.test(classAttr) ||
-            STATUS_CLASS_PATTERN.test(idAttr);
-
-          let $_el: cheerio.Cheerio<any> | undefined;
-          const getEl = (): cheerio.Cheerio<any> => $_el || ($_el = $(el));
-
-          const textContent = getEl().text().trim();
-          const hasStatusText = STATUS_TEXT_PATTERN.test(textContent);
-
-          if (hasStatusClass || hasStatusText) {
-            if (
-              attribs["role"] === undefined &&
-              attribs["aria-live"] === undefined &&
-              attribs["aria-busy"] === undefined
-            ) {
-              getEl().attr("role", "status");
-
-              // If it contains no visible text/children (typical for purely visual CSS or SVG loading spinners)
-              // and lacks descriptive screen-reader attributes, provide a default descriptive aria-label.
-              if (
-                !textContent &&
-                attribs["aria-label"] === undefined &&
-                attribs["title"] === undefined &&
-                attribs["aria-labelledby"] === undefined
-              ) {
-                getEl().attr("aria-label", "Loading");
+          const title = attribs["title"]?.trim();
+          if (!title) {
+            let derivedTitle = "Embedded content";
+            const src = attribs["src"]?.trim();
+            if (src) {
+              try {
+                const urlObj = new URL(
+                  src.startsWith("//") ? `https:${src}` : src,
+                );
+                const hostname = urlObj.hostname.toLowerCase();
+                if (
+                  hostname.includes("youtube.com") ||
+                  hostname.includes("youtu.be")
+                ) {
+                  derivedTitle = "YouTube video player";
+                } else if (hostname.includes("vimeo.com")) {
+                  derivedTitle = "Vimeo video player";
+                } else if (
+                  hostname.includes("google.com") &&
+                  urlObj.pathname.includes("/maps")
+                ) {
+                  derivedTitle = "Google Maps";
+                } else if (hostname.includes("facebook.com")) {
+                  derivedTitle = "Facebook content";
+                } else if (hostname.includes("twitter.com")) {
+                  derivedTitle = "Twitter content";
+                } else {
+                  const cleanHost = hostname.replace(/^www\./, "");
+                  derivedTitle = `Embedded content from ${cleanHost}`;
+                }
+              } catch {
+                // Ignore parsing errors for relative or malformed URLs
               }
             }
+
+            if (derivedTitle === "Embedded content") {
+              const idAttr = attribs["id"]?.trim();
+              if (idAttr) {
+                derivedTitle = idAttr.replace(/[-_]+/g, " ");
+              } else {
+                const nameAttr = attribs["name"]?.trim();
+                if (nameAttr) {
+                  derivedTitle = nameAttr.replace(/[-_]+/g, " ");
+                }
+              }
+            }
+
+            $(el).attr("title", derivedTitle);
           }
         });
 

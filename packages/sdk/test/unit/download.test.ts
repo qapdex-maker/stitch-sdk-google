@@ -1873,7 +1873,7 @@ describe("DownloadAssetsHandler", () => {
     expect(btnNormal.attr("aria-label")).toBeUndefined();
   });
 
-  it("programmatically enriches iframe elements with a descriptive title attribute", async () => {
+  it("programmatically enriches iframe elements with titles when missing", async () => {
     const fs = await import("node:fs/promises");
     vi.mocked(fs.writeFile).mockClear();
 
@@ -1891,13 +1891,17 @@ describe("DownloadAssetsHandler", () => {
 
     const htmlContent =
       "<html><body>" +
-      '<iframe id="ifrm-yt" src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>' +
-      '<iframe id="ifrm-maps" src="https://maps.google.com/maps?q=london"></iframe>' +
-      '<iframe id="ifrm-custom" src="https://example.com/widget"></iframe>' +
-      '<iframe id="ifrm-name" name="chat-widget"></iframe>' +
-      '<iframe id="login-form-widget"></iframe>' +
-      '<iframe class="no-clues-frame"></iframe>' +
-      '<iframe id="ifrm-existing" title="My Video" src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>' +
+      '<iframe id="ifr-existing" title="Pre-existing Title"></iframe>' +
+      '<iframe id="ifr-youtube" src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>' +
+      '<iframe id="ifr-vimeo" src="https://player.vimeo.com/video/12345"></iframe>' +
+      '<iframe id="ifr-maps" src="https://www.google.com/maps/embed?pb=!1m18"></iframe>' +
+      '<iframe id="ifr-facebook" src="https://www.facebook.com/plugins/page.php"></iframe>' +
+      '<iframe id="ifr-twitter" src="https://platform.twitter.com/widgets/tweet_button.html"></iframe>' +
+      '<iframe id="ifr-generic-host" src="https://example.com/widget"></iframe>' +
+      '<iframe id="ifr-by-id-custom-name"></iframe>' +
+      '<iframe name="my-chat-widget"></iframe>' +
+      '<iframe id="ifr-no-cues"></iframe>' +
+      "<iframe></iframe>" +
       "</body></html>";
 
     const mockFetch = vi.fn().mockImplementation((url) => {
@@ -1923,37 +1927,51 @@ describe("DownloadAssetsHandler", () => {
         typeof call[0] === "string" &&
         call[0].includes(".tmp-") &&
         typeof call[1] === "string" &&
-        call[1].includes("ifrm-yt"),
+        call[1].includes("ifr-existing"),
     );
     expect(htmlWriteCall).toBeDefined();
     const writtenHtml = htmlWriteCall![1] as string;
 
     const $written = cheerio.load(writtenHtml);
 
-    // Youtube iframe should get title="YouTube video player"
-    expect($written("#ifrm-yt").attr("title")).toBe("YouTube video player");
+    // Existing title should be preserved
+    expect($written("#ifr-existing").attr("title")).toBe("Pre-existing Title");
 
-    // Google Maps iframe should get title="Google Maps"
-    expect($written("#ifrm-maps").attr("title")).toBe("Google Maps");
+    // Youtube title
+    expect($written("#ifr-youtube").attr("title")).toBe("YouTube video player");
 
-    // General host iframe should get title="[Host] embedded content"
-    expect($written("#ifrm-custom").attr("title")).toBe(
-      "Example embedded content",
+    // Vimeo title
+    expect($written("#ifr-vimeo").attr("title")).toBe("Vimeo video player");
+
+    // Google Maps title
+    expect($written("#ifr-maps").attr("title")).toBe("Google Maps");
+
+    // Facebook title
+    expect($written("#ifr-facebook").attr("title")).toBe("Facebook content");
+
+    // Twitter title
+    expect($written("#ifr-twitter").attr("title")).toBe("Twitter content");
+
+    // Generic host title
+    expect($written("#ifr-generic-host").attr("title")).toBe(
+      "Embedded content from example.com",
     );
 
-    // Iframe without src but with name should humanize the name
-    expect($written("#ifrm-name").attr("title")).toBe("Chat widget");
-
-    // Iframe without src but with id should humanize the id
-    expect($written("#login-form-widget").attr("title")).toBe(
-      "Login form widget",
+    // By ID title
+    expect($written("#ifr-by-id-custom-name").attr("title")).toBe(
+      "ifr by id custom name",
     );
 
-    // Iframe with absolutely no clues gets title="Embedded content"
-    expect($written(".no-clues-frame").attr("title")).toBe("Embedded content");
+    // By Name title
+    expect($written('iframe[name="my-chat-widget"]').attr("title")).toBe(
+      "my chat widget",
+    );
 
-    // Existing title should be preserved and not overridden
-    expect($written("#ifrm-existing").attr("title")).toBe("My Video");
+    // No cues title
+    expect($written("#ifr-no-cues").attr("title")).toBe("ifr no cues");
+
+    // Truly no cues title
+    expect($written("iframe").last().attr("title")).toBe("Embedded content");
   });
 });
 
