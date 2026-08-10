@@ -861,66 +861,59 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           }
         });
 
-        // 10. Loading Indicator Accessibility: Elevate visual loading indicators to accessible regions.
-        // A. Process elements with specific loading/spinner classes or IDs
-        $("[class], [id]").each((_, el) => {
+        // 10. Iframe Title Accessibility: Ensure all iframe elements have a descriptive title attribute (WCAG 2.4.1 / 4.1.2)
+        // to provide screen reader users with context about the embedded content without forcing them to navigate inside.
+        $("iframe").each((_, el) => {
           const attribs = (el as any).attribs || {};
-          const classAttr = attribs["class"] || "";
-          const idAttr = attribs["id"] || "";
+          const existingTitle = attribs["title"];
+          if (existingTitle === undefined || existingTitle.trim() === "") {
+            let generatedTitle = "";
+            const src = attribs["src"] || "";
+            const idAttr = attribs["id"] || "";
+            const nameAttr = attribs["name"] || "";
 
-          const isCandidate =
-            LOADING_CLASS_ID_PATTERN.test(classAttr) ||
-            LOADING_CLASS_ID_PATTERN.test(idAttr);
-
-          if (isCandidate) {
-            // Exclude false positives like "uploader", "downloader", "reload", "preload"
-            const isFalsePositive =
-              LOADING_FALSE_POSITIVE_PATTERN.test(classAttr) ||
-              LOADING_FALSE_POSITIVE_PATTERN.test(idAttr);
-
-            if (!isFalsePositive) {
-              const $el = $(el);
-              if (attribs["role"] === undefined) {
-                $el.attr("role", "status");
-              }
-
-              const text = $el.text().trim();
-              const hasAriaLabel = attribs["aria-label"] !== undefined;
-              const hasAriaLabelledBy =
-                attribs["aria-labelledby"] !== undefined;
-              const hasTitle = attribs["title"] !== undefined;
-
-              if (
-                text.length === 0 &&
-                !hasAriaLabel &&
-                !hasAriaLabelledBy &&
-                !hasTitle
-              ) {
-                $el.attr("aria-label", "Loading");
-              }
-            }
-          }
-        });
-
-        // B. Process leaf text elements (span, p, button) containing loading/processing text
-        $("span, p, button").each((_, el) => {
-          const children = (el as any).children || [];
-          const hasElementChildren = children.some(
-            (child: any) => child.type === "tag",
-          );
-
-          if (!hasElementChildren) {
-            const $el = $(el);
-            const text = $el.text().trim();
-            if (LOADING_TEXT_PATTERN.test(text)) {
-              // Ensure we exclude false positives in text content too
-              if (!LOADING_FALSE_POSITIVE_PATTERN.test(text)) {
-                const attribs = (el as any).attribs || {};
-                if (attribs["role"] === undefined) {
-                  $el.attr("role", "status");
+            if (src) {
+              try {
+                const url = new URL(src, "https://dummy.com");
+                const host = url.hostname.toLowerCase();
+                if (host.includes("youtube.com") || host.includes("youtu.be")) {
+                  generatedTitle = "YouTube video player";
+                } else if (host.includes("vimeo.com")) {
+                  generatedTitle = "Vimeo video player";
+                } else if (
+                  host.includes("google.com/maps") ||
+                  host.includes("maps.google.com")
+                ) {
+                  generatedTitle = "Google Maps";
+                } else if (host.includes("facebook.com")) {
+                  generatedTitle = "Facebook embedded content";
+                } else if (host.includes("twitter.com")) {
+                  generatedTitle = "Twitter embedded content";
+                } else {
+                  let friendlyHost = host.replace(/^www\./, "");
+                  const firstPart = friendlyHost.split(".")[0];
+                  if (firstPart) {
+                    friendlyHost =
+                      firstPart.charAt(0).toUpperCase() + firstPart.slice(1);
+                  }
+                  generatedTitle = `${friendlyHost} embedded content`;
                 }
+              } catch {
+                generatedTitle = "Embedded content";
               }
+            } else if (nameAttr) {
+              const humanized = nameAttr.replace(/[-_]/g, " ");
+              generatedTitle =
+                humanized.charAt(0).toUpperCase() + humanized.slice(1);
+            } else if (idAttr) {
+              const humanized = idAttr.replace(/[-_]/g, " ");
+              generatedTitle =
+                humanized.charAt(0).toUpperCase() + humanized.slice(1);
+            } else {
+              generatedTitle = "Embedded content";
             }
+
+            $(el).attr("title", generatedTitle);
           }
         });
 
