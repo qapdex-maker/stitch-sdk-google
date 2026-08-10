@@ -71,7 +71,12 @@ export function isSafeUrl(urlStr: string): boolean {
       lowerHost.endsWith(".localhost") ||
       lowerHost.endsWith(".test") ||
       lowerHost.endsWith(".invalid") ||
-      lowerHost.endsWith(".example")
+      lowerHost.endsWith(".example") ||
+      lowerHost.endsWith(".lan") ||
+      lowerHost.endsWith(".localdomain") ||
+      lowerHost.endsWith(".home") ||
+      lowerHost.endsWith(".corp") ||
+      lowerHost.endsWith(".home.arpa")
     ) {
       return false;
     }
@@ -123,6 +128,23 @@ export function isSafeUrl(urlStr: string): boolean {
         /^0*1$/.test(clean.replace(/:/g, ""))
       ) {
         return false;
+      }
+
+      // Check wider link-local (fe80::/10) and unique local (fc00::/7) ranges
+      const firstColon = clean.indexOf(":");
+      if (firstColon !== -1) {
+        const firstBlockHex = clean.substring(0, firstColon);
+        const firstBlock = parseInt(firstBlockHex, 16);
+        if (!isNaN(firstBlock)) {
+          // Link-local: fe80::/10 (fe80 to febf)
+          if (firstBlock >= 0xfe80 && firstBlock <= 0xfebf) {
+            return false;
+          }
+          // Unique local: fc00::/7 (fc00 to fdff)
+          if (firstBlock >= 0xfc00 && firstBlock <= 0xfdff) {
+            return false;
+          }
+        }
       }
       if (
         clean.startsWith("fe80:") ||
