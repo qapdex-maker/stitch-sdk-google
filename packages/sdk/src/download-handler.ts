@@ -407,6 +407,17 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         // Before we run this, we can also perform automatic label association for nearby labels:
         // - A label element directly preceding the form control (if neither is currently associated).
         // - A checkbox/radio followed immediately by a label element (if neither is currently associated).
+        // OPTIMIZATION: Pre-compile label `for` attribute mappings to eliminate redundant global queries in hot loop.
+        const labelForMap = new Map<string, string>();
+        $("label").each((_, lbl) => {
+          const forAttr = (lbl as any).attribs?.["for"];
+          if (forAttr) {
+            const text = $(lbl).text();
+            const existing = labelForMap.get(forAttr) || "";
+            labelForMap.set(forAttr, existing ? existing + " " + text : text);
+          }
+        });
+
         let labelCounter = 1;
         let descCounter = 1;
         $("input, textarea, select").each((_, el) => {
@@ -414,6 +425,19 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           // This avoids up to 29 expensive, redundant Cheerio `.attr()` calls per element,
           // drastically reducing Cheerio wrapper creation and DOM property lookup overhead.
           const attribs = (el as any).attribs || {};
+
+          // OPTIMIZATION: Extract label ancestor info in a single low-overhead AST-based pass.
+          let parentLabelText = "";
+          let hasLabelAncestor = false;
+          let curr = (el as any).parent;
+          while (curr) {
+            if (curr.name === "label") {
+              parentLabelText = $(curr).text();
+              hasLabelAncestor = true;
+              break;
+            }
+            curr = curr.parent;
+          }
           const typeAttr = (attribs["type"] || "").toLowerCase();
           const nameAttr = attribs["name"] || "";
           const idAttr = attribs["id"] || "";
@@ -430,14 +454,14 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           const isSelect = (el as any).name === "select";
           if (!isSelect && attribs["autocomplete"] === undefined) {
             let lookupText = `${typeAttr} ${nameAttr} ${idAttr} ${placeholderAttr} ${titleAttr} ${ariaLabelAttr || ""}`;
-            const parentLabel = $(el).closest("label");
-            if (parentLabel.length > 0) {
-              lookupText += " " + parentLabel.text();
+            if (hasLabelAncestor) {
+              lookupText += " " + parentLabelText;
             }
             if (idAttr) {
-              $(`label[for="${idAttr}"]`).each((_, lbl) => {
-                lookupText += " " + $(lbl).text();
-              });
+              const lblText = labelForMap.get(idAttr);
+              if (lblText) {
+                lookupText += " " + lblText;
+              }
             }
             lookupText = lookupText.toLowerCase();
 
@@ -519,10 +543,7 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
 
           const hasAriaLabel = ariaLabelAttr !== undefined;
           const hasAriaLabelledBy = ariaLabelledByAttr !== undefined;
-          const hasLabelAncestor = $(el).closest("label").length > 0;
-          const hasForLabel = idAttr
-            ? $(`label[for="${idAttr}"]`).length > 0
-            : false;
+          const hasForLabel = idAttr ? labelForMap.has(idAttr) : false;
 
           let hasAccessibleName =
             hasAriaLabel ||
@@ -669,14 +690,14 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           if (!hasRequiredAttr && !hasAriaRequiredAttr) {
             let textToInspect = "";
 
-            const parentLabel = $(el).closest("label");
-            if (parentLabel.length > 0) {
-              textToInspect += " " + parentLabel.text();
+            if (hasLabelAncestor) {
+              textToInspect += " " + parentLabelText;
             }
             if (idAttr) {
-              $(`label[for="${idAttr}"]`).each((_, lbl) => {
-                textToInspect += " " + $(lbl).text();
-              });
+              const lblText = labelForMap.get(idAttr);
+              if (lblText) {
+                textToInspect += " " + lblText;
+              }
             }
 
             if (placeholderAttr) {
