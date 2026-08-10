@@ -23,6 +23,12 @@
  * parseResourceName("projects/123")             // → "123"
  * parseResourceName("abc123")                   // → "abc123" (pass-through)
  */
+// Hoisted regular expressions to avoid recompilation and allocation inside hot paths
+const IPV4_CHARS_PATTERN = /^[0-9.]+$/;
+const BRACKETS_PATTERN = /^\[|\]$/g;
+const LOOPBACK_V6_PATTERN = /^0*1$/;
+const COLON_PATTERN = /:/g;
+
 export function parseResourceName(name: string): string {
   if (!name) return name;
   const lastSlashIndex = name.lastIndexOf("/");
@@ -64,7 +70,7 @@ export function isSafeUrl(urlStr: string): boolean {
       return false;
     }
 
-    // Check reserved suffixes
+    // Check reserved and common local/residential DNS suffixes as defense-in-depth
     if (
       lowerHost.endsWith(".local") ||
       lowerHost.endsWith(".internal") ||
@@ -82,7 +88,7 @@ export function isSafeUrl(urlStr: string): boolean {
     }
 
     // Check IPv4 address (using normalized lowerHost to handle trailing dot)
-    if (/^[0-9.]+$/.test(lowerHost)) {
+    if (IPV4_CHARS_PATTERN.test(lowerHost)) {
       const parts = lowerHost.split(".");
       if (parts.length === 4) {
         const o1 = parseInt(parts[0], 10);
@@ -121,11 +127,11 @@ export function isSafeUrl(urlStr: string): boolean {
 
     // Check IPv6 address
     if (host.startsWith("[") && host.endsWith("]")) {
-      const clean = lowerHost.replace(/^\[|\]$/g, "");
+      const clean = lowerHost.replace(BRACKETS_PATTERN, "");
       if (
         clean === "::1" ||
         clean === "::" ||
-        /^0*1$/.test(clean.replace(/:/g, ""))
+        LOOPBACK_V6_PATTERN.test(clean.replace(COLON_PATTERN, ""))
       ) {
         return false;
       }
@@ -158,7 +164,7 @@ export function isSafeUrl(urlStr: string): boolean {
         mappedIpParts = parseIpv4MappedPart(ipv4Part);
       } else if (clean.startsWith("::")) {
         const ipv4Part = clean.substring(2);
-        const colonsCount = (ipv4Part.match(/:/g) || []).length;
+        const colonsCount = (ipv4Part.match(COLON_PATTERN) || []).length;
         if (colonsCount <= 1) {
           mappedIpParts = parseIpv4MappedPart(ipv4Part);
         }
