@@ -1,3 +1,11 @@
+## 2026-04-15 - IPv6 Subnet and Private DNS Suffix SSRF Bypass Protection
+
+**Vulnerability:** The SSRF URL validator `isSafeUrl` protected against local/private network request forgery. However, it checked IPv6 addresses via literal prefix strings (`fe80:`, `fc00:`, `fd00:`), which failed to block larger subnets such as `fe81::1` (part of the `fe80::/10` link-local range) or `fc01::1` (part of the `fc00::/7` unique local range). Additionally, it did not block other common local DNS suffixes (e.g. `.lan`, `.localdomain`, `.home`, `.corp`, and `.home.arpa`), leaving them open to local hostname SSRF bypass.
+
+**Learning:** String prefix match checks are not sufficient for multi-subnet CIDR ranges in network validation. Bitwise arithmetic is necessary to accurately capture full subnets of link-local and unique local addresses in IPv6.
+
+**Prevention:** Perform bitwise masking and numerical checks on the parsed first 16-bit block of IPv6 addresses, and maintain a comprehensive list of standard local/internal DNS TLDs and suffixes.
+
 ## 2026-03-01 - Path Traversal Protection in File and Asset Download Handler
 
 **Vulnerability:** The handwritten `DownloadAssetsHandler` downloaded user screen assets and saved them locally. However, if a screen's title was undefined, the handler fell back to using the raw `screenId` (or `name`) without sanitization as the base of the directory path. A malicious actor could supply a screen ID with directory traversal patterns (like `../../etc/passwd`), causing the tool to write generated code and screenshots outside the intended output directory.
@@ -69,3 +77,11 @@
 **Learning:** DNS resolves absolute domain names (those with a trailing dot) exactly like relative ones. However, application-level code checking string equality (`=== "localhost"`) or suffix matching (`endsWith(".local")`) is easily bypassed by absolute domain representations if trailing dots are not normalized.
 
 **Prevention:** Normalize all hostnames by stripping any single trailing dot before checking against string blocklists, suffix checks, and IP addresses.
+
+## 2026-04-15 - SSRF IPv6 Non-Zero Prefix and Common Local DNS Suffix Bypass Protection
+
+**Vulnerability:** The SSRF URL validator `isSafeUrl` in `packages/sdk/src/utils.ts` validated unique local IPv6 addresses (ULAs) and link-local ranges using static prefix checks (like `clean.startsWith("fe80:")` or `clean.startsWith("fc00:")`). However, an attacker could bypass these checks by using non-zero subnets (such as `[fc01::1]` or `[fe81::1]`), which are valid routing prefixes under `fc00::/7` and `fe80::/10` but were not covered by the exact prefix checks. Additionally, local/residential DNS suffixes like `.lan`, `.localdomain`, `.home`, `.corp`, and `.home.arpa` were not blocked, exposing private network servers to SSRF.
+
+**Learning:** When validating IP ranges like IPv6 subnets, checking explicit starting strings is extremely brittle because of subnet masks and non-zero hex representations within CIDR blocks. Instead, parsing the first 16-bit block into a numeric integer and validating it against CIDR-defined hexadecimal limits (e.g., `0xfc00`-`0xfdff` and `0xfe80`-`0xfeff`) provides complete security coverage.
+
+**Prevention:** Parse the first hexadecimal group of IPv6 addresses and numerically validate the 16-bit range. Additionally, maintain a comprehensive blocklist of common residential/enterprise local DNS suffixes.

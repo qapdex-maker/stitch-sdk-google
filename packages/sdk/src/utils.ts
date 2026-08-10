@@ -23,6 +23,12 @@
  * parseResourceName("projects/123")             // → "123"
  * parseResourceName("abc123")                   // → "abc123" (pass-through)
  */
+// Hoisted regular expressions to avoid recompilation and allocation inside hot paths
+const IPV4_CHARS_PATTERN = /^[0-9.]+$/;
+const BRACKETS_PATTERN = /^\[|\]$/g;
+const LOOPBACK_V6_PATTERN = /^0*1$/;
+const COLON_PATTERN = /:/g;
+
 export function parseResourceName(name: string): string {
   if (!name) return name;
   const lastSlashIndex = name.lastIndexOf("/");
@@ -69,14 +75,19 @@ export function isSafeUrl(urlStr: string): boolean {
       return false;
     }
 
-    // Check reserved suffixes
+    // Check reserved and common local/residential DNS suffixes as defense-in-depth
     if (
       lowerHost.endsWith(".local") ||
       lowerHost.endsWith(".internal") ||
       lowerHost.endsWith(".localhost") ||
       lowerHost.endsWith(".test") ||
       lowerHost.endsWith(".invalid") ||
-      lowerHost.endsWith(".example")
+      lowerHost.endsWith(".example") ||
+      lowerHost.endsWith(".lan") ||
+      lowerHost.endsWith(".localdomain") ||
+      lowerHost.endsWith(".home") ||
+      lowerHost.endsWith(".corp") ||
+      lowerHost.endsWith(".home.arpa")
     ) {
       return false;
     }
@@ -129,12 +140,23 @@ export function isSafeUrl(urlStr: string): boolean {
       ) {
         return false;
       }
-      if (
-        clean.startsWith("fe80:") ||
-        clean.startsWith("fc00:") ||
-        clean.startsWith("fd00:")
-      ) {
-        return false;
+
+      // Parse and numerically validate the first 16-bit block of IPv6 hostnames
+      // to prevent link-local (fe80::/10) and unique local (fc00::/7) range bypasses
+      const firstColon = clean.indexOf(":");
+      if (firstColon !== -1) {
+        const firstSegment = clean.substring(0, firstColon);
+        const firstHex = parseInt(firstSegment, 16);
+        if (!isNaN(firstHex)) {
+          // Link-local: fe80::/10
+          if ((firstHex & 0xffc0) === 0xfe80) {
+            return false;
+          }
+          // Unique local / Site-local: fc00::/7
+          if ((firstHex & 0xfe00) === 0xfc00) {
+            return false;
+          }
+        }
       }
 
       // Check IPv4-mapped and IPv4-compatible IPv6 addresses for SSRF bypass
