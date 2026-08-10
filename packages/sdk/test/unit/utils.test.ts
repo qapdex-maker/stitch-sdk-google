@@ -96,12 +96,31 @@ describe("isSafeUrl SSRF Protection", () => {
       expect(isSafeUrl("http://web.test")).toBe(false);
       expect(isSafeUrl("http://site.invalid")).toBe(false);
       expect(isSafeUrl("http://api.example")).toBe(false);
+      // New local/residential domain suffixes
+      expect(isSafeUrl("http://service.lan")).toBe(false);
+      expect(isSafeUrl("http://my.localdomain")).toBe(false);
+      expect(isSafeUrl("http://router.home")).toBe(false);
+      expect(isSafeUrl("http://server.corp")).toBe(false);
+      expect(isSafeUrl("http://gateway.home.arpa")).toBe(false);
     });
 
     it("rejects unique local and link-local IPv6 addresses", () => {
       expect(isSafeUrl("http://[fe80::1]")).toBe(false);
       expect(isSafeUrl("http://[fc00::1]")).toBe(false);
       expect(isSafeUrl("http://[fd00::1]")).toBe(false);
+
+      // Link-local/ULA subnet range bypasses
+      expect(isSafeUrl("http://[fc01::1]")).toBe(false);
+      expect(isSafeUrl("http://[fe81::1]")).toBe(false);
+      expect(isSafeUrl("http://[fd12:3456:789a:bcde::1]")).toBe(false);
+    });
+
+    it("rejects local and residential DNS suffixes", () => {
+      expect(isSafeUrl("http://router.lan")).toBe(false);
+      expect(isSafeUrl("http://myhost.localdomain")).toBe(false);
+      expect(isSafeUrl("http://smarthome.home")).toBe(false);
+      expect(isSafeUrl("http://company.corp")).toBe(false);
+      expect(isSafeUrl("http://printer.home.arpa")).toBe(false);
     });
 
     it("rejects IPv4-mapped and IPv4-compatible IPv6 addresses mapping to restricted/private IPs", () => {
@@ -127,6 +146,28 @@ describe("isSafeUrl SSRF Protection", () => {
       // Public IP (8.8.8.8 is 0808:0808)
       expect(isSafeUrl("http://[::ffff:8.8.8.8]")).toBe(true);
       expect(isSafeUrl("http://[::ffff:0808:0808]")).toBe(true);
+    });
+
+    it("rejects IPv6 addresses with non-zero Link-Local, Site-Local, and ULA prefixes", () => {
+      // Link-local non-zero
+      expect(isSafeUrl("http://[fe81::1]")).toBe(false);
+      expect(isSafeUrl("http://[fe90::1]")).toBe(false);
+      expect(isSafeUrl("http://[febf::1]")).toBe(false);
+      // Site-local non-zero
+      expect(isSafeUrl("http://[fec1::1]")).toBe(false);
+      expect(isSafeUrl("http://[feff::1]")).toBe(false);
+      // ULA non-zero
+      expect(isSafeUrl("http://[fc01::1]")).toBe(false);
+      expect(isSafeUrl("http://[fd01::1]")).toBe(false);
+      expect(isSafeUrl("http://[fdff::1]")).toBe(false);
+    });
+
+    it("rejects additional reserved/private DNS suffixes", () => {
+      expect(isSafeUrl("http://service.lan")).toBe(false);
+      expect(isSafeUrl("http://app.localdomain")).toBe(false);
+      expect(isSafeUrl("http://router.home")).toBe(false);
+      expect(isSafeUrl("http://intranet.corp")).toBe(false);
+      expect(isSafeUrl("http://device.home.arpa")).toBe(false);
     });
 
     it("rejects invalid URLs gracefully", () => {

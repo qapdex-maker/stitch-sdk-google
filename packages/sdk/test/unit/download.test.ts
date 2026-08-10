@@ -1872,6 +1872,89 @@ describe("DownloadAssetsHandler", () => {
     const btnNormal = $written("#btn-normal-action");
     expect(btnNormal.attr("aria-label")).toBeUndefined();
   });
+
+  it("programmatically enriches iframe elements with a descriptive title attribute", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<iframe id="ifrm-yt" src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>' +
+      '<iframe id="ifrm-maps" src="https://maps.google.com/maps?q=london"></iframe>' +
+      '<iframe id="ifrm-custom" src="https://example.com/widget"></iframe>' +
+      '<iframe id="ifrm-name" name="chat-widget"></iframe>' +
+      '<iframe id="login-form-widget"></iframe>' +
+      '<iframe class="no-clues-frame"></iframe>' +
+      '<iframe id="ifrm-existing" title="My Video" src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("ifrm-yt"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    const $written = cheerio.load(writtenHtml);
+
+    // Youtube iframe should get title="YouTube video player"
+    expect($written("#ifrm-yt").attr("title")).toBe("YouTube video player");
+
+    // Google Maps iframe should get title="Google Maps"
+    expect($written("#ifrm-maps").attr("title")).toBe("Google Maps");
+
+    // General host iframe should get title="[Host] embedded content"
+    expect($written("#ifrm-custom").attr("title")).toBe(
+      "Example embedded content",
+    );
+
+    // Iframe without src but with name should humanize the name
+    expect($written("#ifrm-name").attr("title")).toBe("Chat widget");
+
+    // Iframe without src but with id should humanize the id
+    expect($written("#login-form-widget").attr("title")).toBe(
+      "Login form widget",
+    );
+
+    // Iframe with absolutely no clues gets title="Embedded content"
+    expect($written(".no-clues-frame").attr("title")).toBe("Embedded content");
+
+    // Existing title should be preserved and not overridden
+    expect($written("#ifrm-existing").attr("title")).toBe("My Video");
+  });
 });
 
 describe("sanitizeFilename", () => {
