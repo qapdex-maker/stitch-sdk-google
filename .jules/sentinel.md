@@ -78,10 +78,10 @@
 
 **Prevention:** Normalize all hostnames by stripping any single trailing dot before checking against string blocklists, suffix checks, and IP addresses.
 
-## 2026-04-15 - SSRF IPv6 Non-Zero Prefix and Common Local DNS Suffix Bypass Protection
+## 2026-04-15 - Dynamic IPv6 Subnet and Residential TLD Bypass Protection
 
-**Vulnerability:** The SSRF URL validator `isSafeUrl` in `packages/sdk/src/utils.ts` validated unique local IPv6 addresses (ULAs) and link-local ranges using static prefix checks (like `clean.startsWith("fe80:")` or `clean.startsWith("fc00:")`). However, an attacker could bypass these checks by using non-zero subnets (such as `[fc01::1]` or `[fe81::1]`), which are valid routing prefixes under `fc00::/7` and `fe80::/10` but were not covered by the exact prefix checks. Additionally, local/residential DNS suffixes like `.lan`, `.localdomain`, `.home`, `.corp`, and `.home.arpa` were not blocked, exposing private network servers to SSRF.
+**Vulnerability:** The SSRF URL validator `isSafeUrl` in `packages/sdk/src/utils.ts` validated standard IPv6 addresses via static prefix matching (such as `startsWith("fe80:")`, `fc00:`, `fd00:`). However, this could be bypassed by slightly modified subnets like `[fc01::1]` or `[fe81::1]` which still resolve to restricted Unique Local Addresses (ULA) or Link-Local/Site-Local subnets. Furthermore, common local/residential DNS suffixes (like `.lan`, `.localdomain`, `.home`, `.corp`, and `.home.arpa`) were not blocked, enabling potential SSRF/DNS rebinding to local network devices.
 
-**Learning:** When validating IP ranges like IPv6 subnets, checking explicit starting strings is extremely brittle because of subnet masks and non-zero hex representations within CIDR blocks. Instead, parsing the first 16-bit block into a numeric integer and validating it against CIDR-defined hexadecimal limits (e.g., `0xfc00`-`0xfdff` and `0xfe80`-`0xfeff`) provides complete security coverage.
+**Learning:** Static prefix matching on IPv6 colons is brittle and easily bypassed by subnets within the wider CIDR range (e.g. `fc00::/7` covers `fc00` to `fdff`). Converting the first 16-bit hex segment of an IPv6 address to an integer allows precise numerical boundaries to be checked safely. Combining this with blocking local/residential DNS suffixes provides solid defense-in-depth against internal network scans.
 
-**Prevention:** Parse the first hexadecimal group of IPv6 addresses and numerically validate the 16-bit range. Additionally, maintain a comprehensive blocklist of common residential/enterprise local DNS suffixes.
+**Prevention:** Parse the first 16-bit block of any parsed IPv6 host into an integer and perform numerical checks against standard range boundaries (e.g. `0xfc00` to `0xfdff` for ULA, `0xfe80` to `0xfeff` for Link-Local/Site-Local). In addition, block local TLDs like `.lan`, `.localdomain`, `.home`, `.corp`, and `.home.arpa` to mitigate DNS rebinding and internal scans.

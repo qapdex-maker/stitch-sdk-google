@@ -75,7 +75,7 @@ export function isSafeUrl(urlStr: string): boolean {
       return false;
     }
 
-    // Check reserved and common local/residential DNS suffixes as defense-in-depth
+    // Check reserved suffixes and local/residential DNS suffixes
     if (
       lowerHost.endsWith(".local") ||
       lowerHost.endsWith(".internal") ||
@@ -141,22 +141,33 @@ export function isSafeUrl(urlStr: string): boolean {
         return false;
       }
 
-      // Parse and numerically validate the first 16-bit block of IPv6 hostnames
-      // to prevent link-local (fe80::/10) and unique local (fc00::/7) range bypasses
+      // Dynamically validate the first 16-bit block of IPv6 addresses for Link-Local, Site-Local, and ULA ranges.
+      // - ULA (Unique Local Address): fc00::/7 (hex 0xfc00 to 0xfdff)
+      // - Link-Local/Site-Local Unicast: fe80::/10 (hex 0xfe80 to 0xfebf), or traditionally fe80::/9 (hex 0xfe80 to 0xfeff)
       const firstColon = clean.indexOf(":");
       if (firstColon !== -1) {
         const firstSegment = clean.substring(0, firstColon);
-        const firstHex = parseInt(firstSegment, 16);
-        if (!isNaN(firstHex)) {
-          // Link-local: fe80::/10
-          if ((firstHex & 0xffc0) === 0xfe80) {
-            return false;
-          }
-          // Unique local / Site-local: fc00::/7
-          if ((firstHex & 0xfe00) === 0xfc00) {
-            return false;
+        if (firstSegment) {
+          const firstBlockNum = parseInt(firstSegment, 16);
+          if (!isNaN(firstBlockNum)) {
+            // Check ULA: fc00::/7 (0xfc00 to 0xfdff)
+            if (firstBlockNum >= 0xfc00 && firstBlockNum <= 0xfdff) {
+              return false;
+            }
+            // Check Link-Local/Site-Local: fe80::/9 (0xfe80 to 0xfeff)
+            if (firstBlockNum >= 0xfe80 && firstBlockNum <= 0xfeff) {
+              return false;
+            }
           }
         }
+      }
+
+      if (
+        clean.startsWith("fe80:") ||
+        clean.startsWith("fc00:") ||
+        clean.startsWith("fd00:")
+      ) {
+        return false;
       }
 
       // Check IPv4-mapped and IPv4-compatible IPv6 addresses for SSRF bypass
