@@ -78,6 +78,7 @@ const TOGGLE_TRIGGER_PATTERN =
 const DROPDOWN_TRIGGER_PATTERN = /dropdown|submenu/i;
 const MENU_TRIGGER_PATTERN = /menu/i;
 const STANDALONE_DISABLED_PATTERN = /(?:^|\s)disabled(?:\s|$)/i;
+const PROJECT_ID_PATTERN = /^[a-zA-Z0-9-.:_]+$/;
 
 const LOADING_CLASS_ID_PATTERN =
   /spinner|loader|loading|skeleton|shimmer|processing/i;
@@ -117,7 +118,7 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
       if (
         !projectId ||
         typeof projectId !== "string" ||
-        !/^[a-zA-Z0-9-.:_]+$/.test(projectId) ||
+        !PROJECT_ID_PATTERN.test(projectId) ||
         projectId.includes("..")
       ) {
         return {
