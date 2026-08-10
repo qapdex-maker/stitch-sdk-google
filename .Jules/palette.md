@@ -66,3 +66,8 @@ This journal contains only critical UX and accessibility learnings. Routine upda
 
 **Learning:** Inputs in downloaded or dynamically-generated screens often collect specific data types (such as email, telephone, URL, numbers, decimals, search queries) but lack explicit `inputmode` attributes. This forces mobile users to manually switch keyboard layouts. Programmatically analyzing input attributes lets us auto-assign mobile-optimized `inputmode` configurations safely.
 **Action:** Automatically map standard input elements lacking `inputmode` to `email`, `tel`, `url`, `search`, `numeric`, or `decimal` using hoisted regular expressions matching context clues (type, name, autocomplete, id, placeholder, and title), while preserving developer-specified `inputmode` settings.
+
+## 2026-04-13 - [Visual Loading Indicator Accessibility & False Positive Prevention]
+
+**Learning:** Automatically elevating loading indicators (spinners, skeletons, shimmers, and text loaders) to accessible status regions using substring selectors like `[class*="loader"]` causes severe false positives by matching unrelated widgets (like file uploader or pdf downloader components) and announcing them as "Loading...". Additionally, recursive DOM `.text()` traversals on general elements creates $O(N^2)$ scaling overhead.
+**Action:** Scan elements matching loading class/ID patterns but explicitly filter out false positives (uploader, downloader, reload, preload) using a dedicated exclusion pattern. For text loaders, target leaf text elements specifically by ensuring they have no nested element children, completely eliminating $O(N^2)$ recursion.
