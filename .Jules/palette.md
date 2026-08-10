@@ -67,7 +67,7 @@ This journal contains only critical UX and accessibility learnings. Routine upda
 **Learning:** Inputs in downloaded or dynamically-generated screens often collect specific data types (such as email, telephone, URL, numbers, decimals, search queries) but lack explicit `inputmode` attributes. This forces mobile users to manually switch keyboard layouts. Programmatically analyzing input attributes lets us auto-assign mobile-optimized `inputmode` configurations safely.
 **Action:** Automatically map standard input elements lacking `inputmode` to `email`, `tel`, `url`, `search`, `numeric`, or `decimal` using hoisted regular expressions matching context clues (type, name, autocomplete, id, placeholder, and title), while preserving developer-specified `inputmode` settings.
 
-## 2026-04-13 - [Automatic Iframe Title Enrichment for Screen Readers]
+## 2026-04-13 - [Automatic Iframe Accessibility Title Enrichment]
 
-**Learning:** Automatically-generated or third-party embedded widgets (like YouTube, Vimeo, Google Maps, reCAPTCHA, etc.) inside stitch-generated screens frequently lack standard semantic `title` attributes on `<iframe>` elements. This results in screen readers being unable to explain the embedded frame context to non-visual users.
-**Action:** Programmatically parse `<iframe>` element attributes (`src`, `id`, `name`) in post-processing, and if `title` is missing, assign a descriptive title based on its domain or identifier cues, falling back to 'Embedded content' if no cues are present.
+**Learning:** Downloaded or generated screens containing inline `<iframe>` elements often lack descriptive `title` attributes, forcing screen readers to announce confusing file paths or raw URLs. Automatically deriving clean, capitalized titles from `src` hosts (like YouTube, Vimeo, Google Maps, Twitter/Facebook) or the element's own `id` or `name` ensures accessible navigation context.
+**Action:** Scan all `<iframe>` tags in post-processing, and if `title` is missing, programmatically derive a descriptive title from its context clues or fallback to 'Embedded content' to ensure WCAG 2.4.1 compliance.

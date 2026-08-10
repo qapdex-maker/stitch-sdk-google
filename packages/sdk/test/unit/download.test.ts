@@ -1873,7 +1873,7 @@ describe("DownloadAssetsHandler", () => {
     expect(btnNormal.attr("aria-label")).toBeUndefined();
   });
 
-  it("programmatically enriches iframe elements with descriptive title attributes", async () => {
+  it("programmatically enriches iframe elements with a descriptive, non-empty title attribute", async () => {
     const fs = await import("node:fs/promises");
     vi.mocked(fs.writeFile).mockClear();
 
@@ -1891,18 +1891,16 @@ describe("DownloadAssetsHandler", () => {
 
     const htmlContent =
       "<html><body>" +
-      '<iframe id="if-yt" src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>' +
-      '<iframe id="if-vim" src="https://player.vimeo.com/video/12345"></iframe>' +
-      '<iframe id="if-maps" src="https://www.google.com/maps/embed?pb=123"></iframe>' +
-      '<iframe id="if-captcha" src="https://www.google.com/recaptcha/api2/anchor"></iframe>' +
-      '<iframe id="if-spot" src="https://open.spotify.com/embed/track/123"></iframe>' +
-      '<iframe id="if-fb" src="https://facebook.com/plugins/page.php"></iframe>' +
-      '<iframe id="if-tw" src="https://platform.twitter.com/widgets"></iframe>' +
-      '<iframe id="if-insta" src="https://instagram.com/p/123/embed"></iframe>' +
-      '<iframe id="chat-frame"></iframe>' +
-      '<iframe name="newsletter_signup"></iframe>' +
-      '<iframe class="no-cues"></iframe>' +
-      '<iframe id="if-existing" title="My Custom Map" src="https://www.google.com/maps"></iframe>' +
+      '<iframe id="iframe-youtube" src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>' +
+      '<iframe id="iframe-vimeo" src="https://player.vimeo.com/video/12345"></iframe>' +
+      '<iframe id="iframe-maps" src="https://www.google.com/maps/embed?pb=123"></iframe>' +
+      '<iframe id="iframe-fb" src="https://www.facebook.com/plugins/page.php"></iframe>' +
+      '<iframe id="iframe-twitter" src="https://platform.twitter.com/widgets/tweet_button.html"></iframe>' +
+      '<iframe id="iframe-unknown" src="https://example.org/something"></iframe>' +
+      '<iframe id="iframe-id" src="/relative/path"></iframe>' +
+      '<iframe name="iframe-name" src=""></iframe>' +
+      '<iframe class="no-cues-iframe" src=""></iframe>' +
+      '<iframe id="iframe-existing" title="Pre-existing Title" src="https://www.youtube.com/embed/123"></iframe>' +
       "</body></html>";
 
     const mockFetch = vi.fn().mockImplementation((url) => {
@@ -1928,33 +1926,48 @@ describe("DownloadAssetsHandler", () => {
         typeof call[0] === "string" &&
         call[0].includes(".tmp-") &&
         typeof call[1] === "string" &&
-        call[1].includes("if-yt"),
+        call[1].includes("iframe-youtube"),
     );
     expect(htmlWriteCall).toBeDefined();
     const writtenHtml = htmlWriteCall![1] as string;
 
     const $written = cheerio.load(writtenHtml);
 
-    expect($written("#if-yt").attr("title")).toBe("YouTube video player");
-    expect($written("#if-vim").attr("title")).toBe("Vimeo video player");
-    expect($written("#if-maps").attr("title")).toBe(
-      "Google Maps interactive map",
+    // Youtube mapped to YouTube video player
+    expect($written("#iframe-youtube").attr("title")).toBe(
+      "YouTube video player",
     );
-    expect($written("#if-captcha").attr("title")).toBe(
-      "reCAPTCHA verification",
+
+    // Vimeo mapped to Vimeo video player
+    expect($written("#iframe-vimeo").attr("title")).toBe("Vimeo video player");
+
+    // Google Maps mapped to Google Maps
+    expect($written("#iframe-maps").attr("title")).toBe("Google Maps");
+
+    // Facebook mapped to Facebook content
+    expect($written("#iframe-fb").attr("title")).toBe("Facebook content");
+
+    // Twitter mapped to Twitter content
+    expect($written("#iframe-twitter").attr("title")).toBe("Twitter content");
+
+    // Unknown mapped to derived hostname content
+    expect($written("#iframe-unknown").attr("title")).toBe(
+      "example.org content",
     );
-    expect($written("#if-spot").attr("title")).toBe("Spotify audio player");
-    expect($written("#if-fb").attr("title")).toBe("Facebook social widget");
-    expect($written("#if-tw").attr("title")).toBe("Twitter social widget");
-    expect($written("#if-insta").attr("title")).toBe("Instagram post preview");
-    expect($written("#chat-frame").attr("title")).toBe(
-      "Embedded chat frame content",
+
+    // Relative/invalid with ID cleaned & capitalized
+    expect($written("#iframe-id").attr("title")).toBe("Iframe Id");
+
+    // Empty src with name cleaned & capitalized
+    expect($written("[name='iframe-name']").attr("title")).toBe("Iframe Name");
+
+    // No cues mapped to Embedded content fallback
+    expect($written(".no-cues-iframe").attr("title")).toBe("Embedded content");
+
+    // Pre-existing title is not overridden
+    expect($written("#iframe-existing").attr("title")).toBe(
+      "Pre-existing Title",
     );
-    expect($written("iframe[name='newsletter_signup']").attr("title")).toBe(
-      "Embedded newsletter signup content",
-    );
-    expect($written(".no-cues").attr("title")).toBe("Embedded content");
-    expect($written("#if-existing").attr("title")).toBe("My Custom Map");
   });
 });
 
