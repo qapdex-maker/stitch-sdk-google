@@ -867,53 +867,56 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           }
         });
 
-        // 10. Inline Frame Accessibility: Ensure <iframe> elements that lack a non-empty `title`
-        // attribute are automatically enriched with descriptive contextual titles.
+        // 10. Embedded Frame Accessibility: Ensure all <iframe> elements have a descriptive title attribute.
+        // OPTIMIZATION: Retrieve attributes directly from raw element `attribs` to bypass costly Cheerio wrapper creation.
         $("iframe").each((_, el) => {
           const attribs = (el as any).attribs || {};
-          const title = attribs["title"]?.trim();
-          if (!title) {
+          const title = attribs["title"];
+          if (!title || !title.trim()) {
             let derivedTitle = "Embedded content";
-            const src = attribs["src"]?.trim();
+            const src = attribs["src"] || "";
+            const id = attribs["id"] || "";
+            const name = attribs["name"] || "";
+
             if (src) {
-              try {
-                const urlObj = new URL(
-                  src.startsWith("//") ? `https:${src}` : src,
-                );
-                const hostname = urlObj.hostname.toLowerCase();
-                if (
-                  hostname.includes("youtube.com") ||
-                  hostname.includes("youtu.be")
-                ) {
-                  derivedTitle = "YouTube video player";
-                } else if (hostname.includes("vimeo.com")) {
-                  derivedTitle = "Vimeo video player";
-                } else if (
-                  hostname.includes("google.com") &&
-                  urlObj.pathname.includes("/maps")
-                ) {
-                  derivedTitle = "Google Maps";
-                } else if (hostname.includes("facebook.com")) {
-                  derivedTitle = "Facebook content";
-                } else if (hostname.includes("twitter.com")) {
-                  derivedTitle = "Twitter content";
-                } else {
-                  const cleanHost = hostname.replace(/^www\./, "");
-                  derivedTitle = `Embedded content from ${cleanHost}`;
-                }
-              } catch {
-                // Ignore parsing errors for relative or malformed URLs
+              const srcLower = src.toLowerCase();
+              if (
+                srcLower.includes("youtube.com") ||
+                srcLower.includes("youtu.be")
+              ) {
+                derivedTitle = "YouTube video player";
+              } else if (srcLower.includes("vimeo.com")) {
+                derivedTitle = "Vimeo video player";
+              } else if (
+                srcLower.includes("google.com/maps") ||
+                srcLower.includes("maps.google.com")
+              ) {
+                derivedTitle = "Google Maps interactive map";
+              } else if (srcLower.includes("recaptcha")) {
+                derivedTitle = "reCAPTCHA verification";
+              } else if (srcLower.includes("spotify.com")) {
+                derivedTitle = "Spotify audio player";
+              } else if (srcLower.includes("facebook.com")) {
+                derivedTitle = "Facebook social widget";
+              } else if (
+                srcLower.includes("twitter.com") ||
+                srcLower.includes("x.com")
+              ) {
+                derivedTitle = "Twitter social widget";
+              } else if (srcLower.includes("instagram.com")) {
+                derivedTitle = "Instagram post preview";
               }
             }
 
             if (derivedTitle === "Embedded content") {
-              const idAttr = attribs["id"]?.trim();
-              if (idAttr) {
-                derivedTitle = idAttr.replace(/[-_]+/g, " ");
-              } else {
-                const nameAttr = attribs["name"]?.trim();
-                if (nameAttr) {
-                  derivedTitle = nameAttr.replace(/[-_]+/g, " ");
+              const cue = id || name;
+              if (cue) {
+                const cleanedCue = cue
+                  .replace(/[-_]/g, " ")
+                  .trim()
+                  .replace(/\s+/g, " ");
+                if (cleanedCue) {
+                  derivedTitle = `Embedded ${cleanedCue} content`;
                 }
               }
             }
