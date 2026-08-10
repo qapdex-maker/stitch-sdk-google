@@ -2217,4 +2217,262 @@ describe("Project.downloadAssets() facade", () => {
     expect($written("#inp-existing-im").attr("inputmode")).toBe("text");
     expect($written("#txt-ignored-im").attr("inputmode")).toBeUndefined();
   });
+
+  it("programmatically tags and elevates visual loading indicators with role='status' and aria-label", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<div id="div-spinner" class="spinner"></div>' +
+      '<span id="span-loader" class="btn-loader"></span>' +
+      '<div id="div-loading" class="loading"></div>' +
+      '<div id="div-skeleton" class="skeleton-screen"></div>' +
+      '<div id="div-shimmer" class="shimmer-effect"></div>' +
+      '<div id="div-processing" class="processing-indicator"></div>' +
+      '<span id="text-loading">Loading...</span>' +
+      '<p id="text-processing">  Processing...  </p>' +
+      '<div id="div-spinner-text" class="spinner">Please wait</div>' +
+      '<div id="div-existing-role" class="spinner" role="log"></div>' +
+      '<div id="div-existing-label" class="spinner" aria-label="Authenticating..."></div>' +
+      '<div id="div-existing-title" class="spinner" title="Loading data"></div>' +
+      '<div id="div-normal">Static content</div>' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("div-spinner"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    const $written = cheerio.load(writtenHtml);
+
+    // Empty/textless spinner gets role="status" and aria-label="Loading"
+    const divSpinner = $written("#div-spinner");
+    expect(divSpinner.attr("role")).toBe("status");
+    expect(divSpinner.attr("aria-label")).toBe("Loading");
+
+    // Empty/textless loader gets role="status" and aria-label="Loading"
+    const spanLoader = $written("#span-loader");
+    expect(spanLoader.attr("role")).toBe("status");
+    expect(spanLoader.attr("aria-label")).toBe("Loading");
+
+    // Empty/textless loading gets role="status" and aria-label="Loading"
+    const divLoading = $written("#div-loading");
+    expect(divLoading.attr("role")).toBe("status");
+    expect(divLoading.attr("aria-label")).toBe("Loading");
+
+    // Empty/textless skeleton gets role="status" and aria-label="Loading"
+    const divSkeleton = $written("#div-skeleton");
+    expect(divSkeleton.attr("role")).toBe("status");
+    expect(divSkeleton.attr("aria-label")).toBe("Loading");
+
+    // Empty/textless shimmer gets role="status" and aria-label="Loading"
+    const divShimmer = $written("#div-shimmer");
+    expect(divShimmer.attr("role")).toBe("status");
+    expect(divShimmer.attr("aria-label")).toBe("Loading");
+
+    // Empty/textless processing gets role="status" and aria-label="Loading"
+    const divProcessing = $written("#div-processing");
+    expect(divProcessing.attr("role")).toBe("status");
+    expect(divProcessing.attr("aria-label")).toBe("Loading");
+
+    // Element with "Loading..." text gets role="status" but preserves its text (no aria-label override needed)
+    const textLoading = $written("#text-loading");
+    expect(textLoading.attr("role")).toBe("status");
+    expect(textLoading.attr("aria-label")).toBeUndefined();
+    expect(textLoading.text()).toBe("Loading...");
+
+    // Element with "Processing..." text gets role="status" but preserves its text
+    const textProcessing = $written("#text-processing");
+    expect(textProcessing.attr("role")).toBe("status");
+    expect(textProcessing.attr("aria-label")).toBeUndefined();
+    expect(textProcessing.text().trim()).toBe("Processing...");
+
+    // Spinner with text gets role="status" but does NOT get fallback aria-label
+    const spinnerWithText = $written("#div-spinner-text");
+    expect(spinnerWithText.attr("role")).toBe("status");
+    expect(spinnerWithText.attr("aria-label")).toBeUndefined();
+    expect(spinnerWithText.text()).toBe("Please wait");
+
+    // Existing role is respected and NOT overridden to "status"
+    const existingRole = $written("#div-existing-role");
+    expect(existingRole.attr("role")).toBe("log");
+    expect(existingRole.attr("aria-label")).toBe("Loading");
+
+    // Existing aria-label prevents fallback aria-label="Loading"
+    const existingLabel = $written("#div-existing-label");
+    expect(existingLabel.attr("role")).toBe("status");
+    expect(existingLabel.attr("aria-label")).toBe("Authenticating...");
+
+    // Existing title prevents fallback aria-label="Loading"
+    const existingTitle = $written("#div-existing-title");
+    expect(existingTitle.attr("role")).toBe("status");
+    expect(existingTitle.attr("aria-label")).toBeUndefined();
+    expect(existingTitle.attr("title")).toBe("Loading data");
+
+    // Normal content does not get status role or aria-label
+    const divNormal = $written("#div-normal");
+    expect(divNormal.attr("role")).toBeUndefined();
+    expect(divNormal.attr("aria-label")).toBeUndefined();
+  });
+
+  it("ensures nested parents without loading class/ID are NOT double-tagged with role='status'", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<div id="nested-parent"><span>Loading...</span></div>' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("nested-parent"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    const $written = cheerio.load(writtenHtml);
+
+    // Inner span has loading text and no element children, so it gets role="status"
+    const innerSpan = $written("#nested-parent span");
+    expect(innerSpan.attr("role")).toBe("status");
+
+    // Parent div has element children, so it should NOT be tagged with role="status"
+    const parentDiv = $written("#nested-parent");
+    expect(parentDiv.attr("role")).toBeUndefined();
+  });
+
+  it("excludes false positives like uploader, downloader, reload, and preload from being tagged", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<div id="div-uploader" class="file-uploader"></div>' +
+      '<span id="span-downloader" id="pdf-downloader"></span>' +
+      '<button id="btn-reload" class="reload-btn">Reload page</button>' +
+      '<div id="div-preload" class="preload-spinner"></div>' +
+      '<span id="text-uploading">Uploading...</span>' +
+      '<span id="text-downloading">Downloading file</span>' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("div-uploader"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    const $written = cheerio.load(writtenHtml);
+
+    // None of these should be tagged as status or Loading
+    expect($written("#div-uploader").attr("role")).toBeUndefined();
+    expect($written("#span-downloader").attr("role")).toBeUndefined();
+    expect($written("#btn-reload").attr("role")).toBeUndefined();
+    expect($written("#div-preload").attr("role")).toBeUndefined();
+    expect($written("#text-uploading").attr("role")).toBeUndefined();
+    expect($written("#text-downloading").attr("role")).toBeUndefined();
+  });
 });

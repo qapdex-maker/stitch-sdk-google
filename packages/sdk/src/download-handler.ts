@@ -79,6 +79,12 @@ const DROPDOWN_TRIGGER_PATTERN = /dropdown|submenu/i;
 const MENU_TRIGGER_PATTERN = /menu/i;
 const STANDALONE_DISABLED_PATTERN = /(?:^|\s)disabled(?:\s|$)/i;
 
+const LOADING_CLASS_ID_PATTERN =
+  /spinner|loader|loading|skeleton|shimmer|processing/i;
+const LOADING_FALSE_POSITIVE_PATTERN =
+  /uploader|downloader|reload|preload|uploading|downloading/i;
+const LOADING_TEXT_PATTERN = /^\s*(loading|processing)(?:\s*\.{1,3})?\s*$/i;
+
 /** Run async task factories with a bounded concurrency limit. */
 async function runWithConcurrency(
   tasks: (() => Promise<void>)[],
@@ -830,6 +836,69 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           if (isDropdownTrigger || MENU_TRIGGER_PATTERN.test(combined)) {
             if (attribs["aria-haspopup"] === undefined) {
               getEl().attr("aria-haspopup", "true");
+            }
+          }
+        });
+
+        // 10. Loading Indicator Accessibility: Elevate visual loading indicators to accessible regions.
+        // A. Process elements with specific loading/spinner classes or IDs
+        $("[class], [id]").each((_, el) => {
+          const attribs = (el as any).attribs || {};
+          const classAttr = attribs["class"] || "";
+          const idAttr = attribs["id"] || "";
+
+          const isCandidate =
+            LOADING_CLASS_ID_PATTERN.test(classAttr) ||
+            LOADING_CLASS_ID_PATTERN.test(idAttr);
+
+          if (isCandidate) {
+            // Exclude false positives like "uploader", "downloader", "reload", "preload"
+            const isFalsePositive =
+              LOADING_FALSE_POSITIVE_PATTERN.test(classAttr) ||
+              LOADING_FALSE_POSITIVE_PATTERN.test(idAttr);
+
+            if (!isFalsePositive) {
+              const $el = $(el);
+              if (attribs["role"] === undefined) {
+                $el.attr("role", "status");
+              }
+
+              const text = $el.text().trim();
+              const hasAriaLabel = attribs["aria-label"] !== undefined;
+              const hasAriaLabelledBy =
+                attribs["aria-labelledby"] !== undefined;
+              const hasTitle = attribs["title"] !== undefined;
+
+              if (
+                text.length === 0 &&
+                !hasAriaLabel &&
+                !hasAriaLabelledBy &&
+                !hasTitle
+              ) {
+                $el.attr("aria-label", "Loading");
+              }
+            }
+          }
+        });
+
+        // B. Process leaf text elements (span, p, button) containing loading/processing text
+        $("span, p, button").each((_, el) => {
+          const children = (el as any).children || [];
+          const hasElementChildren = children.some(
+            (child: any) => child.type === "tag",
+          );
+
+          if (!hasElementChildren) {
+            const $el = $(el);
+            const text = $el.text().trim();
+            if (LOADING_TEXT_PATTERN.test(text)) {
+              // Ensure we exclude false positives in text content too
+              if (!LOADING_FALSE_POSITIVE_PATTERN.test(text)) {
+                const attribs = (el as any).attribs || {};
+                if (attribs["role"] === undefined) {
+                  $el.attr("role", "status");
+                }
+              }
             }
           }
         });
