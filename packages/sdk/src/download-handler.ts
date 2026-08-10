@@ -80,6 +80,12 @@ const MENU_TRIGGER_PATTERN = /menu/i;
 const STANDALONE_DISABLED_PATTERN = /(?:^|\s)disabled(?:\s|$)/i;
 const PROJECT_ID_PATTERN = /^[a-zA-Z0-9-.:_]+$/;
 
+const LOADING_CLASS_ID_PATTERN =
+  /spinner|loader|loading|skeleton|shimmer|processing/i;
+const LOADING_FALSE_POSITIVE_PATTERN =
+  /uploader|downloader|reload|preload|uploading|downloading/i;
+const LOADING_TEXT_PATTERN = /^\s*(loading|processing)(?:\s*\.{1,3})?\s*$/i;
+
 /** Run async task factories with a bounded concurrency limit. */
 async function runWithConcurrency(
   tasks: (() => Promise<void>)[],
@@ -402,6 +408,17 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         // Before we run this, we can also perform automatic label association for nearby labels:
         // - A label element directly preceding the form control (if neither is currently associated).
         // - A checkbox/radio followed immediately by a label element (if neither is currently associated).
+        // OPTIMIZATION: Pre-compile label `for` attribute mappings to eliminate redundant global queries in hot loop.
+        const labelForMap = new Map<string, string>();
+        $("label").each((_, lbl) => {
+          const forAttr = (lbl as any).attribs?.["for"];
+          if (forAttr) {
+            const text = $(lbl).text();
+            const existing = labelForMap.get(forAttr) || "";
+            labelForMap.set(forAttr, existing ? existing + " " + text : text);
+          }
+        });
+
         let labelCounter = 1;
         let descCounter = 1;
         $("input, textarea, select").each((_, el) => {
@@ -409,6 +426,19 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           // This avoids up to 29 expensive, redundant Cheerio `.attr()` calls per element,
           // drastically reducing Cheerio wrapper creation and DOM property lookup overhead.
           const attribs = (el as any).attribs || {};
+
+          // OPTIMIZATION: Extract label ancestor info in a single low-overhead AST-based pass.
+          let parentLabelText = "";
+          let hasLabelAncestor = false;
+          let curr = (el as any).parent;
+          while (curr) {
+            if (curr.name === "label") {
+              parentLabelText = $(curr).text();
+              hasLabelAncestor = true;
+              break;
+            }
+            curr = curr.parent;
+          }
           const typeAttr = (attribs["type"] || "").toLowerCase();
           const nameAttr = attribs["name"] || "";
           const idAttr = attribs["id"] || "";
@@ -425,14 +455,14 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           const isSelect = (el as any).name === "select";
           if (!isSelect && attribs["autocomplete"] === undefined) {
             let lookupText = `${typeAttr} ${nameAttr} ${idAttr} ${placeholderAttr} ${titleAttr} ${ariaLabelAttr || ""}`;
-            const parentLabel = $(el).closest("label");
-            if (parentLabel.length > 0) {
-              lookupText += " " + parentLabel.text();
+            if (hasLabelAncestor) {
+              lookupText += " " + parentLabelText;
             }
             if (idAttr) {
-              $(`label[for="${idAttr}"]`).each((_, lbl) => {
-                lookupText += " " + $(lbl).text();
-              });
+              const lblText = labelForMap.get(idAttr);
+              if (lblText) {
+                lookupText += " " + lblText;
+              }
             }
             lookupText = lookupText.toLowerCase();
 
@@ -514,10 +544,7 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
 
           const hasAriaLabel = ariaLabelAttr !== undefined;
           const hasAriaLabelledBy = ariaLabelledByAttr !== undefined;
-          const hasLabelAncestor = $(el).closest("label").length > 0;
-          const hasForLabel = idAttr
-            ? $(`label[for="${idAttr}"]`).length > 0
-            : false;
+          const hasForLabel = idAttr ? labelForMap.has(idAttr) : false;
 
           let hasAccessibleName =
             hasAriaLabel ||
@@ -664,14 +691,14 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           if (!hasRequiredAttr && !hasAriaRequiredAttr) {
             let textToInspect = "";
 
-            const parentLabel = $(el).closest("label");
-            if (parentLabel.length > 0) {
-              textToInspect += " " + parentLabel.text();
+            if (hasLabelAncestor) {
+              textToInspect += " " + parentLabelText;
             }
             if (idAttr) {
-              $(`label[for="${idAttr}"]`).each((_, lbl) => {
-                textToInspect += " " + $(lbl).text();
-              });
+              const lblText = labelForMap.get(idAttr);
+              if (lblText) {
+                textToInspect += " " + lblText;
+              }
             }
 
             if (placeholderAttr) {
@@ -832,6 +859,62 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
             if (attribs["aria-haspopup"] === undefined) {
               getEl().attr("aria-haspopup", "true");
             }
+          }
+        });
+
+        // 10. Iframe Title Accessibility: Ensure all iframe elements have a descriptive title attribute (WCAG 2.4.1 / 4.1.2)
+        // to provide screen reader users with context about the embedded content without forcing them to navigate inside.
+        $("iframe").each((_, el) => {
+          const attribs = (el as any).attribs || {};
+          const existingTitle = attribs["title"];
+          if (existingTitle === undefined || existingTitle.trim() === "") {
+            let generatedTitle = "";
+            const src = attribs["src"] || "";
+            const idAttr = attribs["id"] || "";
+            const nameAttr = attribs["name"] || "";
+
+            if (src) {
+              try {
+                const url = new URL(src, "https://dummy.com");
+                const host = url.hostname.toLowerCase();
+                if (host.includes("youtube.com") || host.includes("youtu.be")) {
+                  generatedTitle = "YouTube video player";
+                } else if (host.includes("vimeo.com")) {
+                  generatedTitle = "Vimeo video player";
+                } else if (
+                  host.includes("google.com/maps") ||
+                  host.includes("maps.google.com")
+                ) {
+                  generatedTitle = "Google Maps";
+                } else if (host.includes("facebook.com")) {
+                  generatedTitle = "Facebook embedded content";
+                } else if (host.includes("twitter.com")) {
+                  generatedTitle = "Twitter embedded content";
+                } else {
+                  let friendlyHost = host.replace(/^www\./, "");
+                  const firstPart = friendlyHost.split(".")[0];
+                  if (firstPart) {
+                    friendlyHost =
+                      firstPart.charAt(0).toUpperCase() + firstPart.slice(1);
+                  }
+                  generatedTitle = `${friendlyHost} embedded content`;
+                }
+              } catch {
+                generatedTitle = "Embedded content";
+              }
+            } else if (nameAttr) {
+              const humanized = nameAttr.replace(/[-_]/g, " ");
+              generatedTitle =
+                humanized.charAt(0).toUpperCase() + humanized.slice(1);
+            } else if (idAttr) {
+              const humanized = idAttr.replace(/[-_]/g, " ");
+              generatedTitle =
+                humanized.charAt(0).toUpperCase() + humanized.slice(1);
+            } else {
+              generatedTitle = "Embedded content";
+            }
+
+            $(el).attr("title", generatedTitle);
           }
         });
 
