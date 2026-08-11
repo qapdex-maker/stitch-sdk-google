@@ -78,7 +78,6 @@ const TOGGLE_TRIGGER_PATTERN =
 const DROPDOWN_TRIGGER_PATTERN = /dropdown|submenu/i;
 const MENU_TRIGGER_PATTERN = /menu/i;
 const STANDALONE_DISABLED_PATTERN = /(?:^|\s)disabled(?:\s|$)/i;
-const PROJECT_ID_PATTERN = /^[a-zA-Z0-9-.:_]+$/;
 
 const LOADING_CLASS_ID_PATTERN =
   /spinner|loader|loading|skeleton|shimmer|processing/i;
@@ -985,6 +984,70 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
             }
 
             $(el).attr("title", derivedTitle);
+          }
+        });
+
+        // 11. Visual loading indicator processing: Tag visual spinners/loaders/loading text as accessible regions
+        $("*").each((_, el) => {
+          const attribs = (el as any).attribs || {};
+          const classStr = attribs["class"] || "";
+          const idStr = attribs["id"] || "";
+
+          // Check for false positives first
+          if (
+            LOADING_FALSE_POSITIVE_PATTERN.test(classStr) ||
+            LOADING_FALSE_POSITIVE_PATTERN.test(idStr)
+          ) {
+            return;
+          }
+
+          const hasSpinnerClassOrId =
+            STATUS_CLASS_PATTERN.test(classStr) ||
+            STATUS_CLASS_PATTERN.test(idStr);
+
+          let isMatch = hasSpinnerClassOrId;
+
+          // If not matched by class/ID, check text pattern
+          if (!isMatch) {
+            // Element must have no element children to avoid redundant or nested tagging on parent containers
+            const childElements = (el as any).children?.filter(
+              (child: any) => child.type === "tag",
+            );
+            if (!childElements || childElements.length === 0) {
+              const text = $(el).text();
+              if (STATUS_TEXT_PATTERN.test(text)) {
+                isMatch = true;
+              }
+            }
+          }
+
+          if (isMatch) {
+            // Respect existing screen-reader attributes or roles
+            const hasExistingRole = attribs["role"] !== undefined;
+            const hasExistingLive = attribs["aria-live"] !== undefined;
+            const hasExistingBusy = attribs["aria-busy"] !== undefined;
+
+            if (hasExistingRole || hasExistingLive || hasExistingBusy) {
+              return;
+            }
+
+            // Assign role="status"
+            $(el).attr("role", "status");
+
+            // Check if accessible text is empty (no text content, no aria-label, no title, no aria-labelledby)
+            const textContent = $(el).text().trim();
+            const hasAriaLabel = attribs["aria-label"] !== undefined;
+            const hasTitle = attribs["title"] !== undefined;
+            const hasAriaLabelledBy = attribs["aria-labelledby"] !== undefined;
+
+            if (
+              !textContent &&
+              !hasAriaLabel &&
+              !hasTitle &&
+              !hasAriaLabelledBy
+            ) {
+              $(el).attr("aria-label", "Loading");
+            }
           }
         });
 

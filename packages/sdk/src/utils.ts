@@ -23,12 +23,6 @@
  * parseResourceName("projects/123")             // → "123"
  * parseResourceName("abc123")                   // → "abc123" (pass-through)
  */
-// Hoisted regular expressions to avoid recompilation and allocation inside hot paths
-const IPV4_CHARS_PATTERN = /^[0-9.]+$/;
-const BRACKETS_PATTERN = /^\[|\]$/g;
-const LOOPBACK_V6_PATTERN = /^0*1$/;
-const COLON_PATTERN = /:/g;
-
 export function parseResourceName(name: string): string {
   if (!name) return name;
   const lastSlashIndex = name.lastIndexOf("/");
@@ -36,6 +30,7 @@ export function parseResourceName(name: string): string {
   return name.substring(lastSlashIndex + 1);
 }
 
+// Hoisted regular expressions to avoid recompilation and allocation inside hot paths
 const IPV4_CANDIDATE_PATTERN = /^[0-9.]+$/;
 const BRACKET_CLEAN_PATTERN = /^\[|\]$/g;
 const IPV6_LOOPBACK_PATTERN = /^0*1$/;
@@ -92,42 +87,22 @@ export function isSafeUrl(urlStr: string): boolean {
       return false;
     }
 
-    // Check IPv4 address (using normalized lowerHost to handle trailing dot)
-    if (IPV4_CANDIDATE_PATTERN.test(lowerHost)) {
-      const parts = lowerHost.split(".");
-      if (parts.length === 4) {
-        const o1 = parseInt(parts[0], 10);
-        const o2 = parseInt(parts[1], 10);
-        const o3 = parseInt(parts[2], 10);
-        const o4 = parseInt(parts[3], 10);
-        if (
-          !isNaN(o1) &&
-          !isNaN(o2) &&
-          !isNaN(o3) &&
-          !isNaN(o4) &&
-          o1 >= 0 &&
-          o1 <= 255 &&
-          o2 >= 0 &&
-          o2 <= 255 &&
-          o3 >= 0 &&
-          o3 <= 255 &&
-          o4 >= 0 &&
-          o4 <= 255
-        ) {
-          // Loopback: 127.0.0.0/8
-          if (o1 === 127) return false;
-          // Private range: 10.0.0.0/8
-          if (o1 === 10) return false;
-          // Private range: 172.16.0.0/12
-          if (o1 === 172 && o2 >= 16 && o2 <= 31) return false;
-          // Private range: 192.168.0.0/16
-          if (o1 === 192 && o2 === 168) return false;
-          // Link-local: 169.254.0.0/16
-          if (o1 === 169 && o2 === 254) return false;
-          // Unspecified/Broadcast: 0.0.0.0/8
-          if (o1 === 0) return false;
-        }
-      }
+    // Check IPv4 address (including non-standard octal, hex, less-than-4-parts representations)
+    const ipv4Octets = parseAton(lowerHost);
+    if (ipv4Octets) {
+      const [o1, o2, o3, o4] = ipv4Octets;
+      // Loopback: 127.0.0.0/8
+      if (o1 === 127) return false;
+      // Private range: 10.0.0.0/8
+      if (o1 === 10) return false;
+      // Private range: 172.16.0.0/12
+      if (o1 === 172 && o2 >= 16 && o2 <= 31) return false;
+      // Private range: 192.168.0.0/16
+      if (o1 === 192 && o2 === 168) return false;
+      // Link-local: 169.254.0.0/16
+      if (o1 === 169 && o2 === 254) return false;
+      // Unspecified/Broadcast: 0.0.0.0/8
+      if (o1 === 0) return false;
     }
 
     // Check IPv6 address
@@ -260,4 +235,74 @@ function parseIpv4MappedPart(part: string): number[] | undefined {
     }
   }
   return undefined;
+}
+
+/**
+ * Parses a string representation of an IPv4 address according to POSIX `inet_aton` rules,
+ * supporting decimal, octal (starting with 0), and hexadecimal (starting with 0x) notations,
+ * with 1 to 4 parts.
+ */
+function parseAton(host: string): [number, number, number, number] | undefined {
+  // Only accept characters allowed in inet_aton (digits, dots, hex x/X, and hex letters a-f/A-F)
+  if (!/^[0-9a-fA-FxX.]+$/.test(host)) {
+    return undefined;
+  }
+
+  const parts = host.split(".");
+  if (parts.length === 0 || parts.length > 4) {
+    return undefined;
+  }
+
+  const values: number[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (!part) return undefined; // Empty parts like "1..2" are invalid
+
+    let num: number;
+    if (part.startsWith("0x") || part.startsWith("0X")) {
+      if (!/^[0-9a-fA-F]+$/.test(part.substring(2))) return undefined;
+      num = parseInt(part, 16);
+    } else if (part.startsWith("0") && part.length > 1) {
+      if (!/^[0-7]+$/.test(part)) return undefined;
+      num = parseInt(part, 8);
+    } else {
+      if (!/^[0-9]+$/.test(part)) return undefined;
+      num = parseInt(part, 10);
+    }
+
+    if (isNaN(num)) return undefined;
+    values.push(num);
+  }
+
+  // Check boundaries and reconstruct IP value
+  let ipVal = 0;
+  if (parts.length === 4) {
+    if (
+      values[0] > 255 ||
+      values[1] > 255 ||
+      values[2] > 255 ||
+      values[3] > 255
+    )
+      return undefined;
+    ipVal =
+      (values[0] << 24) | (values[1] << 16) | (values[2] << 8) | values[3];
+  } else if (parts.length === 3) {
+    if (values[0] > 255 || values[1] > 255 || values[2] > 65535)
+      return undefined;
+    ipVal = (values[0] << 24) | (values[1] << 16) | values[2];
+  } else if (parts.length === 2) {
+    if (values[0] > 255 || values[1] > 16777215) return undefined;
+    ipVal = (values[0] << 24) | values[1];
+  } else if (parts.length === 1) {
+    if (values[0] > 4294967295) return undefined;
+    ipVal = values[0];
+  }
+
+  // Extract standard 4 octets using unsigned shift
+  const o1 = (ipVal >>> 24) & 255;
+  const o2 = (ipVal >>> 16) & 255;
+  const o3 = (ipVal >>> 8) & 255;
+  const o4 = ipVal & 255;
+
+  return [o1, o2, o3, o4];
 }
