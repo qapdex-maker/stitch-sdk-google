@@ -91,7 +91,6 @@ const STATUS_CLASS_PATTERN =
 const STATUS_TEXT_PATTERN =
   /^\s*(loading|processing|please\s+wait)\b\.{0,3}\s*$/i;
 
-const PROJECT_ID_PATTERN = /^[a-zA-Z0-9-.:_]+$/;
 const PATH_SEPARATOR_PATTERN = /[\/\\]/;
 const WHITESPACE_PATTERN = /\s+/;
 const SANITIZE_FILENAME_PATTERN = /[^a-zA-Z0-9_-]/g;
@@ -113,6 +112,43 @@ async function runWithConcurrency(
   }
 
   await Promise.all(executing);
+}
+
+/**
+ * Recursively gets text content from a raw AST node.
+ * Bypasses Cheerio wrapper creation to maximize performance.
+ */
+function getRawText(node: any): string {
+  if (!node) return "";
+  if (node.type === "text") return node.data || "";
+  if (!node.children) return "";
+  let text = "";
+  for (let i = 0; i < node.children.length; i++) {
+    text += getRawText(node.children[i]);
+  }
+  return text;
+}
+
+/**
+ * Searches the children and descendants of a node to find the first `<svg><title>` structure.
+ * Returns the text of the first found SVG title, or empty string.
+ */
+function findSvgTitle(node: any): string {
+  if (!node || !node.children) return "";
+  for (let i = 0; i < node.children.length; i++) {
+    const child = node.children[i];
+    if (child.name === "svg" && child.children) {
+      for (let j = 0; j < child.children.length; j++) {
+        const svgChild = child.children[j];
+        if (svgChild.name === "title") {
+          return getRawText(svgChild).trim();
+        }
+      }
+    }
+    const nested = findSvgTitle(child);
+    if (nested) return nested;
+  }
+  return "";
 }
 
 export class DownloadAssetsHandler implements DownloadAssetsSpec {
@@ -328,7 +364,10 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
             getEl().attr("aria-label", title);
             ariaLabel = title;
           } else if (!title && !ariaLabel) {
-            const svgTitle = getEl().find("svg title").first().text().trim();
+            // OPTIMIZATION: Use the high-performance raw AST findSvgTitle instead of Cheerio's
+            // slow document-wide `.find("svg title").first().text().trim()` lookups to prevent
+            // jQuery/Cheerio wrapper instantiation and unnecessary DOM traversals.
+            const svgTitle = findSvgTitle(el);
             if (svgTitle) {
               getEl().attr("aria-label", svgTitle);
               ariaLabel = svgTitle;
@@ -735,6 +774,47 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           // The search landmark mapping is already fully handled earlier in this loop (using optimized raw `attribs` lookup).
           // Removing this redundant block completely eliminates up to 7 slow `$(el).attr()` calls, 1 `.is()`, and 2 `.closest()`
           // allocations/queries per form control element, boosting performance and reducing memory churn.
+        });
+
+        // Loading Indicator Accessibility: Elevate visual loading indicators to accessible regions
+        $("div, span, p, button").each((_, el) => {
+          const attribs = (el as any).attribs || {};
+
+          if (
+            attribs["role"] !== undefined ||
+            attribs["aria-live"] !== undefined ||
+            attribs["aria-busy"] !== undefined
+          ) {
+            return;
+          }
+
+          const classStr = attribs["class"] || "";
+          const idStr = attribs["id"] || "";
+
+          const hasLoadingClassOrId =
+            (LOADING_CLASS_ID_PATTERN.test(classStr) ||
+              LOADING_CLASS_ID_PATTERN.test(idStr)) &&
+            !LOADING_FALSE_POSITIVE_PATTERN.test(classStr) &&
+            !LOADING_FALSE_POSITIVE_PATTERN.test(idStr);
+
+          const text = $(el).text();
+          const hasLoadingText = LOADING_TEXT_PATTERN.test(text);
+
+          if (hasLoadingClassOrId || hasLoadingText) {
+            if ($(el).children().length > 0) {
+              return;
+            }
+
+            $(el).attr("role", "status");
+
+            if (
+              !text.trim() &&
+              attribs["aria-label"] === undefined &&
+              attribs["title"] === undefined
+            ) {
+              $(el).attr("aria-label", "Loading");
+            }
+          }
         });
 
         // 4. Document Language Accessibility: Ensure the <html> element has a lang attribute (defaults to "en").
