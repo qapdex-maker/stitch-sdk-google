@@ -39,7 +39,6 @@ export function parseResourceName(name: string): string {
 const IPV4_CANDIDATE_PATTERN = /^[0-9.]+$/;
 const BRACKET_CLEAN_PATTERN = /^\[|\]$/g;
 const IPV6_LOOPBACK_PATTERN = /^0*1$/;
-const COLON_PATTERN = /:/g;
 
 /**
  * Validates whether a URL is safe from SSRF attacks (Server-Side Request Forgery).

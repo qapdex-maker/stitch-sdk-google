@@ -91,7 +91,6 @@ const STATUS_CLASS_PATTERN =
 const STATUS_TEXT_PATTERN =
   /^\s*(loading|processing|please\s+wait)\b\.{0,3}\s*$/i;
 
-const PROJECT_ID_PATTERN = /^[a-zA-Z0-9-.:_]+$/;
 const PATH_SEPARATOR_PATTERN = /[\/\\]/;
 const WHITESPACE_PATTERN = /\s+/;
 const SANITIZE_FILENAME_PATTERN = /[^a-zA-Z0-9_-]/g;
@@ -742,6 +741,48 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         if (htmlEl.length > 0 && !htmlEl.attr("lang")) {
           htmlEl.attr("lang", "en");
         }
+
+        // 4b. Visual Loading and Status Indicators Accessibility Post-processing
+        $("*").each((_, el) => {
+          const tag = (el as any).name;
+          if (!tag || /^(html|body|head|script|style|meta|link)$/.test(tag))
+            return;
+          const attribs = (el as any).attribs || {};
+          const cls = attribs["class"] || "",
+            id = attribs["id"] || "";
+          let hasChildren = false;
+          for (const c of (el as any).children || [])
+            if (c.type === "tag") {
+              hasChildren = true;
+              break;
+            }
+          const text = hasChildren ? "" : $(el).text();
+          if (
+            !STATUS_CLASS_PATTERN.test(cls + " " + id) &&
+            !STATUS_TEXT_PATTERN.test(text)
+          )
+            return;
+          const fullText = hasChildren ? $(el).text() : text;
+          if (
+            LOADING_FALSE_POSITIVE_PATTERN.test(cls + " " + id + " " + fullText)
+          )
+            return;
+          if (
+            attribs["role"] === undefined &&
+            attribs["aria-live"] === undefined &&
+            attribs["aria-busy"] === undefined
+          ) {
+            $(el).attr("role", "status");
+          }
+          if (
+            fullText.trim() === "" &&
+            attribs["aria-label"] === undefined &&
+            attribs["title"] === undefined &&
+            attribs["aria-labelledby"] === undefined
+          ) {
+            $(el).attr("aria-label", "Loading");
+          }
+        });
 
         // 8. Iframe Title Accessibility: Ensure all <iframe> elements have a descriptive, non-empty title attribute.
         // If they lack a title, try to derive one from src, id, or name attributes, and fallback to 'Embedded content'.
