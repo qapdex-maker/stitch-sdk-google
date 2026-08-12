@@ -2431,4 +2431,87 @@ describe("Project.downloadAssets() facade", () => {
     expect(divNormal.attr("role")).toBeUndefined();
     expect(divNormal.attr("aria-label")).toBeUndefined();
   });
+
+  it("programmatically maps visual error states on form controls to semantic aria-invalid", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.writeFile).mockClear();
+
+    const mockClient = {
+      callTool: vi.fn().mockResolvedValue({
+        screens: [{ id: "s1", name: "projects/p1/screens/s1" }],
+      }),
+    } as any;
+
+    const mockScreen = {
+      id: "s1",
+      htmlCode: { downloadUrl: "http://fake/s1.html" },
+    };
+    mockClient.callTool.mockResolvedValue({ screens: [mockScreen] });
+
+    const htmlContent =
+      "<html><body>" +
+      '<div><input id="inp-invalid" class="is-invalid" type="text"></div>' +
+      '<div><textarea id="txt-error" class="error-field"></textarea></div>' +
+      '<div><select id="sel-invalid-with-colons" class="md:border-red-500 invalid:border-red-600"></select></div>' +
+      '<div>' +
+      '  <input id="inp-desc-error" aria-describedby="desc-error" type="email">' +
+      '  <span id="desc-error">Please enter a valid email address</span>' +
+      '</div>' +
+      '<div>' +
+      '  <input id="inp-desc-normal" aria-describedby="desc-normal" type="text">' +
+      '  <span id="desc-normal">Your username</span>' +
+      '</div>' +
+      '<div><input id="inp-existing-invalid" aria-invalid="false" class="error-field" type="password"></div>' +
+      '<div><input id="inp-normal" type="text"></div>' +
+      "</body></html>";
+
+    const mockFetch = vi.fn().mockImplementation((url) => {
+      if (url === "http://fake/s1.html") {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(htmlContent),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const handler = new DownloadAssetsHandler(mockClient);
+    await handler.execute({ projectId: "p1", outputDir: "/tmp/out" });
+
+    const writeFileCalls = vi.mocked(fs.writeFile).mock.calls;
+    const htmlWriteCall = writeFileCalls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes(".tmp-") &&
+        typeof call[1] === "string" &&
+        call[1].includes("inp-invalid"),
+    );
+    expect(htmlWriteCall).toBeDefined();
+    const writtenHtml = htmlWriteCall![1] as string;
+
+    const $written = cheerio.load(writtenHtml);
+
+    // Inputs with visual invalid/error classes should get aria-invalid="true"
+    expect($written("#inp-invalid").attr("aria-invalid")).toBe("true");
+    expect($written("#txt-error").attr("aria-invalid")).toBe("true");
+
+    // Inputs with pseudo-classes containing colons (like invalid:border-red-600) should be ignored
+    expect($written("#sel-invalid-with-colons").attr("aria-invalid")).toBeUndefined();
+
+    // Inputs with a connected aria-describedby element whose ID/class/text indicates an error should get aria-invalid="true"
+    expect($written("#inp-desc-error").attr("aria-invalid")).toBe("true");
+
+    // Inputs with normal aria-describedby element should NOT get aria-invalid="true"
+    expect($written("#inp-desc-normal").attr("aria-invalid")).toBeUndefined();
+
+    // Existing aria-invalid should be preserved
+    expect($written("#inp-existing-invalid").attr("aria-invalid")).toBe("false");
+
+    // Normal inputs are unaffected
+    expect($written("#inp-normal").attr("aria-invalid")).toBeUndefined();
+  });
 });

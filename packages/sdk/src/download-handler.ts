@@ -78,7 +78,6 @@ const TOGGLE_TRIGGER_PATTERN =
 const DROPDOWN_TRIGGER_PATTERN = /dropdown|submenu/i;
 const MENU_TRIGGER_PATTERN = /menu/i;
 const STANDALONE_DISABLED_PATTERN = /(?:^|\s)disabled(?:\s|$)/i;
-const PROJECT_ID_PATTERN = /^[a-zA-Z0-9-.:_]+$/;
 
 const LOADING_CLASS_ID_PATTERN =
   /spinner|loader|loading|skeleton|shimmer|processing/i;
@@ -95,6 +94,8 @@ const PROJECT_ID_PATTERN = /^[a-zA-Z0-9-.:_]+$/;
 const PATH_SEPARATOR_PATTERN = /[\/\\]/;
 const WHITESPACE_PATTERN = /\s+/;
 const SANITIZE_FILENAME_PATTERN = /[^a-zA-Z0-9_-]/g;
+
+const ERROR_CLASS_PATTERN = /(?:^|\s|-)(error|invalid)(?:\s|-|$)/i;
 
 /** Run async task factories with a bounded concurrency limit. */
 async function runWithConcurrency(
@@ -264,6 +265,90 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
 
         const html = await fetch(htmlUrl).then((r) => r.text());
         const $ = cheerio.load(html);
+
+        // AST visual loading indicator tagging helper functions
+        const getNodeText = (node: AnyNode): string => {
+          if (node.type === "text") {
+            return (node as any).data || "";
+          }
+          let text = "";
+          if ((node as any).children) {
+            for (const child of (node as any).children) {
+              text += getNodeText(child);
+            }
+          }
+          return text;
+        };
+
+        const hasElementChildren = (node: AnyNode): boolean => {
+          if (!(node as any).children) return false;
+          for (const child of (node as any).children) {
+            if (child.type === "tag") {
+              return true;
+            }
+          }
+          return false;
+        };
+
+        const rootNode = $.root()[0];
+        if (rootNode) {
+          const traverseAst = (node: AnyNode) => {
+            if (node.type === "tag") {
+              const attribs = (node as any).attribs || {};
+              const classAttr = attribs["class"] || "";
+              const idAttr = attribs["id"] || "";
+              const hasFalsePositive =
+                LOADING_FALSE_POSITIVE_PATTERN.test(classAttr) ||
+                LOADING_FALSE_POSITIVE_PATTERN.test(idAttr);
+
+              if (!hasFalsePositive) {
+                const isVisualIndicator =
+                  STATUS_CLASS_PATTERN.test(classAttr) ||
+                  STATUS_CLASS_PATTERN.test(idAttr);
+
+                let isTextIndicator = false;
+                if (!isVisualIndicator && !hasElementChildren(node)) {
+                  const text = getNodeText(node);
+                  if (STATUS_TEXT_PATTERN.test(text)) {
+                    isTextIndicator = true;
+                  }
+                }
+
+                if (isVisualIndicator || isTextIndicator) {
+                  const hasExistingA11y =
+                    attribs["role"] !== undefined ||
+                    attribs["aria-live"] !== undefined ||
+                    attribs["aria-busy"] !== undefined;
+
+                  if (!hasExistingA11y) {
+                    $(node).attr("role", "status");
+                    const hasScreenReaderAttr =
+                      attribs["aria-label"] !== undefined ||
+                      attribs["aria-labelledby"] !== undefined ||
+                      attribs["title"] !== undefined;
+                    if (!hasScreenReaderAttr) {
+                      const text = getNodeText(node).trim();
+                      if (!text) {
+                        $(node).attr("aria-label", "Loading");
+                      }
+                    }
+                  }
+                }
+              }
+
+              if ((node as any).children) {
+                for (const child of (node as any).children) {
+                  traverseAst(child);
+                }
+              }
+            } else if (node.type === "root" && (node as any).children) {
+              for (const child of (node as any).children) {
+                traverseAst(child);
+              }
+            }
+          };
+          traverseAst(rootNode);
+        }
 
         const assetTasks: (() => Promise<void>)[] = [];
 
@@ -693,6 +778,49 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
                 }
                 $(el).attr("aria-describedby", descId);
               }
+            }
+          }
+
+          // 3f. Map Visual Form Field Error States to Semantic aria-invalid="true"
+          const hasAriaInvalid = attribs["aria-invalid"] !== undefined;
+          if (!hasAriaInvalid) {
+            let isInvalid = false;
+
+            // Check if input itself has error/invalid class, ignoring Tailwind modifiers
+            const classStr = attribs["class"] || "";
+            if (classStr) {
+              const classes = classStr.split(/\s+/);
+              for (const cls of classes) {
+                if (cls && !cls.includes(":")) {
+                  if (ERROR_CLASS_PATTERN.test(cls)) {
+                    isInvalid = true;
+                    break;
+                  }
+                }
+              }
+            }
+
+            // Check if connected aria-describedby element indicates an error
+            const currentDescribedBy = $(el).attr("aria-describedby") || ariaDescribedByAttr;
+            if (!isInvalid && currentDescribedBy) {
+              const descEl = $(`#${currentDescribedBy}`);
+              if (descEl.length > 0) {
+                const descClass = descEl.attr("class") || "";
+                const descId = descEl.attr("id") || "";
+                const descText = descEl.text().toLowerCase();
+                if (
+                  ERROR_CLASS_PATTERN.test(descClass) ||
+                  ERROR_CLASS_PATTERN.test(descId) ||
+                  descText.includes("error") ||
+                  descText.includes("invalid")
+                ) {
+                  isInvalid = true;
+                }
+              }
+            }
+
+            if (isInvalid) {
+              $(el).attr("aria-invalid", "true");
             }
           }
 

@@ -71,3 +71,8 @@ This journal contains only critical UX and accessibility learnings. Routine upda
 
 **Learning:** Downloaded or generated screens containing inline `<iframe>` elements often lack descriptive `title` attributes, forcing screen readers to announce confusing file paths or raw URLs. Automatically deriving clean, capitalized titles from `src` hosts (like YouTube, Vimeo, Google Maps, Twitter/Facebook) or the element's own `id` or `name` ensures accessible navigation context.
 **Action:** Scan all `<iframe>` tags in post-processing, and if `title` is missing, programmatically derive a descriptive title from its context clues or fallback to 'Embedded content' to ensure WCAG 2.4.1 compliance.
+
+## 2026-04-14 - [Mapping Visual Form Field Error States to Semantic ARIA Invalid State]
+
+**Learning:** Generated screens often style invalid form controls with visual error classes (such as 'is-invalid' or 'error-field') or display a connected error/invalid message helper. Assistive technology users miss this visual validation context unless mapped to the semantic `aria-invalid="true"` property.
+**Action:** Programmatically inspect class strings and connected `aria-describedby` error element IDs, classes, and text contents to automatically inject `aria-invalid="true"` on form controls, while avoiding Tailwind pseudo-classes.
