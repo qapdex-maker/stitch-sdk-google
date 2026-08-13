@@ -1239,68 +1239,97 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         });
 
         // 11. Visual loading indicator processing: Tag visual spinners/loaders/loading text as accessible regions
-        $("*").each((_, el) => {
-          const attribs = (el as any).attribs || {};
-          const classStr = attribs["class"] || "";
-          const idStr = attribs["id"] || "";
+        // OPTIMIZATION: Recursively traverse the raw AST instead of using slow Cheerio `$("*")` selectors,
+        // completely avoiding heavy wrapper allocations and rendering the traversal lightning fast.
+        const root = $.root()[0];
+        if (root) {
+          const findAndTagLoadingIndicators = (node: AnyNode) => {
+            if (node.type === "tag") {
+              const attribs = (node as any).attribs || {};
+              const classStr = attribs["class"] || "";
+              const idStr = attribs["id"] || "";
 
-          // Check for false positives first
-          if (
-            LOADING_FALSE_POSITIVE_PATTERN.test(classStr) ||
-            LOADING_FALSE_POSITIVE_PATTERN.test(idStr)
-          ) {
-            return;
-          }
+              // Check for false positives first
+              const isFalsePositive =
+                LOADING_FALSE_POSITIVE_PATTERN.test(classStr) ||
+                LOADING_FALSE_POSITIVE_PATTERN.test(idStr);
 
-          const hasSpinnerClassOrId =
-            STATUS_CLASS_PATTERN.test(classStr) ||
-            STATUS_CLASS_PATTERN.test(idStr);
+              if (!isFalsePositive) {
+                const hasSpinnerClassOrId =
+                  STATUS_CLASS_PATTERN.test(classStr) ||
+                  STATUS_CLASS_PATTERN.test(idStr);
 
-          let isMatch = hasSpinnerClassOrId;
+                let isMatch = hasSpinnerClassOrId;
+                let text = "";
 
-          // If not matched by class/ID, check text pattern
-          if (!isMatch) {
-            // Element must have no element children to avoid redundant or nested tagging on parent containers
-            const childElements = (el as any).children?.filter(
-              (child: any) => child.type === "tag",
-            );
-            if (!childElements || childElements.length === 0) {
-              const text = $(el).text();
-              if (STATUS_TEXT_PATTERN.test(text)) {
-                isMatch = true;
+                // Walk children directly to extract text content with zero allocations
+                if ((node as any).children) {
+                  for (const child of (node as any).children) {
+                    if (child.type === "text") {
+                      text += child.data || "";
+                    }
+                  }
+                }
+
+                // If not matched by class/ID, check text pattern
+                if (!isMatch) {
+                  // Element must have no element children to avoid redundant or nested tagging on parent containers
+                  let hasTagChildren = false;
+                  if ((node as any).children) {
+                    for (const child of (node as any).children) {
+                      if (child.type === "tag") {
+                        hasTagChildren = true;
+                        break;
+                      }
+                    }
+                  }
+                  if (!hasTagChildren) {
+                    if (STATUS_TEXT_PATTERN.test(text)) {
+                      isMatch = true;
+                    }
+                  }
+                }
+
+                if (isMatch) {
+                  // Respect existing screen-reader attributes or roles
+                  const hasExistingRole = attribs["role"] !== undefined;
+                  const hasExistingLive = attribs["aria-live"] !== undefined;
+                  const hasExistingBusy = attribs["aria-busy"] !== undefined;
+
+                  if (!hasExistingRole && !hasExistingLive && !hasExistingBusy) {
+                    // Assign role="status"
+                    $(node).attr("role", "status");
+
+                    // Check if accessible text is empty (no text content, no aria-label, no title, no aria-labelledby)
+                    const textContent = text.trim();
+                    const hasAriaLabel = attribs["aria-label"] !== undefined;
+                    const hasTitle = attribs["title"] !== undefined;
+                    const hasAriaLabelledBy = attribs["aria-labelledby"] !== undefined;
+
+                    if (
+                      !textContent &&
+                      !hasAriaLabel &&
+                      !hasTitle &&
+                      !hasAriaLabelledBy
+                    ) {
+                      $(node).attr("aria-label", "Loading");
+                    }
+                  }
+                }
               }
             }
-          }
 
-          if (isMatch) {
-            // Respect existing screen-reader attributes or roles
-            const hasExistingRole = attribs["role"] !== undefined;
-            const hasExistingLive = attribs["aria-live"] !== undefined;
-            const hasExistingBusy = attribs["aria-busy"] !== undefined;
-
-            if (hasExistingRole || hasExistingLive || hasExistingBusy) {
-              return;
+            if ((node as any).children) {
+              for (const child of (node as any).children) {
+                findAndTagLoadingIndicators(child);
+              }
             }
+          };
 
-            // Assign role="status"
-            $(el).attr("role", "status");
-
-            // Check if accessible text is empty (no text content, no aria-label, no title, no aria-labelledby)
-            const textContent = $(el).text().trim();
-            const hasAriaLabel = attribs["aria-label"] !== undefined;
-            const hasTitle = attribs["title"] !== undefined;
-            const hasAriaLabelledBy = attribs["aria-labelledby"] !== undefined;
-
-            if (
-              !textContent &&
-              !hasAriaLabel &&
-              !hasTitle &&
-              !hasAriaLabelledBy
-            ) {
-              $(el).attr("aria-label", "Loading");
-            }
+          for (const child of (root as any).children || []) {
+            findAndTagLoadingIndicators(child);
           }
-        });
+        }
 
         $('link[rel="stylesheet"]').each((_, el) => {
           const attribs = (el as any).attribs || {};

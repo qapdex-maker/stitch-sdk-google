@@ -23,17 +23,18 @@
  * parseResourceName("projects/123")             // → "123"
  * parseResourceName("abc123")                   // → "abc123" (pass-through)
  */
+// Hoisted regular expressions to avoid recompilation and allocation inside hot paths
+const COLON_PATTERN = /:/g;
+const IPV4_CANDIDATE_PATTERN = /^[0-9.]+$/;
+const BRACKET_CLEAN_PATTERN = /^\[|\]$/g;
+const IPV6_LOOPBACK_PATTERN = /^0*1$/;
+
 export function parseResourceName(name: string): string {
   if (!name) return name;
   const lastSlashIndex = name.lastIndexOf("/");
   if (lastSlashIndex === -1) return name;
   return name.substring(lastSlashIndex + 1);
 }
-
-// Hoisted regular expressions to avoid recompilation and allocation inside hot paths
-const IPV4_CANDIDATE_PATTERN = /^[0-9.]+$/;
-const BRACKET_CLEAN_PATTERN = /^\[|\]$/g;
-const IPV6_LOOPBACK_PATTERN = /^0*1$/;
 
 /**
  * Validates whether a URL is safe from SSRF attacks (Server-Side Request Forgery).
