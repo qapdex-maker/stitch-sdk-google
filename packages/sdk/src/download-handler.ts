@@ -1238,6 +1238,70 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           }
         });
 
+        // 11. Visual loading indicator processing: Tag visual spinners/loaders/loading text as accessible regions
+        $("*").each((_, el) => {
+          const attribs = (el as any).attribs || {};
+          const classStr = attribs["class"] || "";
+          const idStr = attribs["id"] || "";
+
+          // Check for false positives first
+          if (
+            LOADING_FALSE_POSITIVE_PATTERN.test(classStr) ||
+            LOADING_FALSE_POSITIVE_PATTERN.test(idStr)
+          ) {
+            return;
+          }
+
+          const hasSpinnerClassOrId =
+            STATUS_CLASS_PATTERN.test(classStr) ||
+            STATUS_CLASS_PATTERN.test(idStr);
+
+          let isMatch = hasSpinnerClassOrId;
+
+          // If not matched by class/ID, check text pattern
+          if (!isMatch) {
+            // Element must have no element children to avoid redundant or nested tagging on parent containers
+            const childElements = (el as any).children?.filter(
+              (child: any) => child.type === "tag",
+            );
+            if (!childElements || childElements.length === 0) {
+              const text = $(el).text();
+              if (STATUS_TEXT_PATTERN.test(text)) {
+                isMatch = true;
+              }
+            }
+          }
+
+          if (isMatch) {
+            // Respect existing screen-reader attributes or roles
+            const hasExistingRole = attribs["role"] !== undefined;
+            const hasExistingLive = attribs["aria-live"] !== undefined;
+            const hasExistingBusy = attribs["aria-busy"] !== undefined;
+
+            if (hasExistingRole || hasExistingLive || hasExistingBusy) {
+              return;
+            }
+
+            // Assign role="status"
+            $(el).attr("role", "status");
+
+            // Check if accessible text is empty (no text content, no aria-label, no title, no aria-labelledby)
+            const textContent = $(el).text().trim();
+            const hasAriaLabel = attribs["aria-label"] !== undefined;
+            const hasTitle = attribs["title"] !== undefined;
+            const hasAriaLabelledBy = attribs["aria-labelledby"] !== undefined;
+
+            if (
+              !textContent &&
+              !hasAriaLabel &&
+              !hasTitle &&
+              !hasAriaLabelledBy
+            ) {
+              $(el).attr("aria-label", "Loading");
+            }
+          }
+        });
+
         $('link[rel="stylesheet"]').each((_, el) => {
           const attribs = (el as any).attribs || {};
           const href = attribs["href"];
