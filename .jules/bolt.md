@@ -1,3 +1,8 @@
+## 2026-11-30 - Zero-Allocation SVG Title Extraction via Raw AST Traversal in Element Loops
+
+**Learning:** During HTML post-processing inside interactive element (`button, a`) loops, calling Cheerio's document-wide nested search `.find("svg title")` on every element that lacks standard accessibility tags creates significant overhead from recursive query parsing, wrapper allocation, and tree scanning. Implementing a zero-allocation, recursive raw AST helper function that scans raw node `.children` arrays directly completely bypasses all Cheerio query and instantiation overhead, resulting in substantial speedups for large-scale document parsing.
+**Action:** Replace nested CSS/DOM query traversals (like `.find()`) inside hot loops with high-performance recursive helper functions that traverse AST-level properties directly.
+
 ## 2026-11-24 - Pre-Compiling Associated Labels Map & Low-Overhead AST Parent Traversal in Form Loop
 
 **Learning:** During HTML post-processing of form controls, querying the document-wide tree for associated labels (e.g. `$('label[for="..."]')`) or climbing parent elements using Cheerio's `.closest("label")` inside a loop over every input, textarea, and select creates severe performance degradation on large files. Pre-compiling all document labels into an O(1) Map matching `for` attribute IDs, combined with simple raw AST pointer climbing (`curr.parent`) to discover enclosing label elements, completely eliminates Cheerio wrapper allocation and document search overhead. This preserves 100% functional equivalence and maintains all accessibility features while rendering the form loops incredibly fast.

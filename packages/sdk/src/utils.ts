@@ -23,12 +23,6 @@
  * parseResourceName("projects/123")             // → "123"
  * parseResourceName("abc123")                   // → "abc123" (pass-through)
  */
-// Hoisted regular expressions to avoid recompilation and allocation inside hot paths
-const IPV4_CHARS_PATTERN = /^[0-9.]+$/;
-const BRACKETS_PATTERN = /^\[|\]$/g;
-const LOOPBACK_V6_PATTERN = /^0*1$/;
-const COLON_PATTERN = /:/g;
-
 export function parseResourceName(name: string): string {
   if (!name) return name;
   const lastSlashIndex = name.lastIndexOf("/");
@@ -36,6 +30,7 @@ export function parseResourceName(name: string): string {
   return name.substring(lastSlashIndex + 1);
 }
 
+// Hoisted regular expressions to avoid recompilation and allocation inside hot paths
 const IPV4_CANDIDATE_PATTERN = /^[0-9.]+$/;
 const BRACKET_CLEAN_PATTERN = /^\[|\]$/g;
 const IPV6_LOOPBACK_PATTERN = /^0*1$/;
