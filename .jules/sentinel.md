@@ -1,3 +1,11 @@
+## 2026-04-20 - SSRF IPv4 Non-Standard Representations Bypass Protection
+
+**Vulnerability:** The SSRF URL validator `isSafeUrl` parsed IPv4 addresses by splitting dotted-decimal strings into exactly 4 decimal parts. This allowed attackers to bypass SSRF protection entirely by using non-standard IPv4 notations such as hexadecimal (`0x7f000001`), octal (`0177.0.0.1`), fewer than 4 parts (`127.1`), or single-integer decimal representations (`2130706433`). Node.js/Bun runtimes and system resolvers treating these notations as valid loopback or private IPs would query them successfully, leading to SSRF.
+
+**Learning:** Traditional string split and dot counting methods are insufficient for robust IPv4 validation because runtimes and DNS resolution libraries implement POSIX `inet_aton` rules, which dynamically parse diverse representation formats.
+
+**Prevention:** Implement a strict, custom `inet_aton`-compatible parser that parses all octal, hexadecimal, and fewer-than-4-parts structures into standard decimal octets before verifying them against loopback or private network CIDR/boundaries.
+
 ## 2026-04-15 - IPv6 Subnet and Private DNS Suffix SSRF Bypass Protection
 
 **Vulnerability:** The SSRF URL validator `isSafeUrl` protected against local/private network request forgery. However, it checked IPv6 addresses via literal prefix strings (`fe80:`, `fc00:`, `fd00:`), which failed to block larger subnets such as `fe81::1` (part of the `fe80::/10` link-local range) or `fc01::1` (part of the `fc00::/7` unique local range). Additionally, it did not block other common local DNS suffixes (e.g. `.lan`, `.localdomain`, `.home`, `.corp`, and `.home.arpa`), leaving them open to local hostname SSRF bypass.

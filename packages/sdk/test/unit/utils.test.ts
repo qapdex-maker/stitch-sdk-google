@@ -158,6 +158,28 @@ describe("isSafeUrl SSRF Protection", () => {
       expect(isSafeUrl("http://device.home.arpa")).toBe(false);
     });
 
+    it("rejects non-standard IPv4 representations (octal, hex, less than 4 parts)", () => {
+      // Hexadecimal representations
+      expect(isSafeUrl("http://0x7f000001")).toBe(false); // 127.0.0.1
+      expect(isSafeUrl("http://0x7f.0x0.0x0.0x1")).toBe(false);
+      expect(isSafeUrl("http://0x0a000001")).toBe(false); // 10.0.0.1
+
+      // Octal representations
+      expect(isSafeUrl("http://017700000001")).toBe(false); // 127.0.0.1
+      expect(isSafeUrl("http://0177.0.0.1")).toBe(false);
+      expect(isSafeUrl("http://012.0.0.1")).toBe(false); // 10.0.0.1
+
+      // Less than 4 parts
+      expect(isSafeUrl("http://127.1")).toBe(false); // 127.0.0.1
+      expect(isSafeUrl("http://10.1")).toBe(false); // 10.0.0.1
+      expect(isSafeUrl("http://172.16.1")).toBe(false); // 172.16.0.1
+      expect(isSafeUrl("http://192.168.1")).toBe(false); // 192.168.0.1
+
+      // Decimal single integer representation
+      expect(isSafeUrl("http://2130706433")).toBe(false); // 127.0.0.1
+      expect(isSafeUrl("http://167772161")).toBe(false); // 10.0.0.1
+    });
+
     it("rejects invalid URLs gracefully", () => {
       expect(isSafeUrl("not-a-url")).toBe(false);
       expect(isSafeUrl("")).toBe(false);

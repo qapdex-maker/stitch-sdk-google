@@ -78,7 +78,6 @@ const TOGGLE_TRIGGER_PATTERN =
 const DROPDOWN_TRIGGER_PATTERN = /dropdown|submenu/i;
 const MENU_TRIGGER_PATTERN = /menu/i;
 const STANDALONE_DISABLED_PATTERN = /(?:^|\s)disabled(?:\s|$)/i;
-const PROJECT_ID_PATTERN = /^[a-zA-Z0-9-.:_]+$/;
 
 const LOADING_CLASS_ID_PATTERN =
   /spinner|loader|loading|skeleton|shimmer|processing/i;
@@ -94,6 +93,8 @@ const STATUS_TEXT_PATTERN =
 const PATH_SEPARATOR_PATTERN = /[\/\\]/;
 const WHITESPACE_PATTERN = /\s+/;
 const SANITIZE_FILENAME_PATTERN = /[^a-zA-Z0-9_-]/g;
+
+const ERROR_CLASS_PATTERN = /(?:^|\s|-)(error|invalid)(?:\s|-|$)/i;
 
 /** Run async task factories with a bounded concurrency limit. */
 async function runWithConcurrency(
@@ -112,6 +113,43 @@ async function runWithConcurrency(
   }
 
   await Promise.all(executing);
+}
+
+/**
+ * Recursively gets text content from a raw AST node.
+ * Bypasses Cheerio wrapper creation to maximize performance.
+ */
+function getRawText(node: any): string {
+  if (!node) return "";
+  if (node.type === "text") return node.data || "";
+  if (!node.children) return "";
+  let text = "";
+  for (let i = 0; i < node.children.length; i++) {
+    text += getRawText(node.children[i]);
+  }
+  return text;
+}
+
+/**
+ * Searches the children and descendants of a node to find the first `<svg><title>` structure.
+ * Returns the text of the first found SVG title, or empty string.
+ */
+function findSvgTitle(node: any): string {
+  if (!node || !node.children) return "";
+  for (let i = 0; i < node.children.length; i++) {
+    const child = node.children[i];
+    if (child.name === "svg" && child.children) {
+      for (let j = 0; j < child.children.length; j++) {
+        const svgChild = child.children[j];
+        if (svgChild.name === "title") {
+          return getRawText(svgChild).trim();
+        }
+      }
+    }
+    const nested = findSvgTitle(child);
+    if (nested) return nested;
+  }
+  return "";
 }
 
 export class DownloadAssetsHandler implements DownloadAssetsSpec {
@@ -264,6 +302,90 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
         const html = await fetch(htmlUrl).then((r) => r.text());
         const $ = cheerio.load(html);
 
+        // AST visual loading indicator tagging helper functions
+        const getNodeText = (node: AnyNode): string => {
+          if (node.type === "text") {
+            return (node as any).data || "";
+          }
+          let text = "";
+          if ((node as any).children) {
+            for (const child of (node as any).children) {
+              text += getNodeText(child);
+            }
+          }
+          return text;
+        };
+
+        const hasElementChildren = (node: AnyNode): boolean => {
+          if (!(node as any).children) return false;
+          for (const child of (node as any).children) {
+            if (child.type === "tag") {
+              return true;
+            }
+          }
+          return false;
+        };
+
+        const rootNode = $.root()[0];
+        if (rootNode) {
+          const traverseAst = (node: AnyNode) => {
+            if (node.type === "tag") {
+              const attribs = (node as any).attribs || {};
+              const classAttr = attribs["class"] || "";
+              const idAttr = attribs["id"] || "";
+              const hasFalsePositive =
+                LOADING_FALSE_POSITIVE_PATTERN.test(classAttr) ||
+                LOADING_FALSE_POSITIVE_PATTERN.test(idAttr);
+
+              if (!hasFalsePositive) {
+                const isVisualIndicator =
+                  STATUS_CLASS_PATTERN.test(classAttr) ||
+                  STATUS_CLASS_PATTERN.test(idAttr);
+
+                let isTextIndicator = false;
+                if (!isVisualIndicator && !hasElementChildren(node)) {
+                  const text = getNodeText(node);
+                  if (STATUS_TEXT_PATTERN.test(text)) {
+                    isTextIndicator = true;
+                  }
+                }
+
+                if (isVisualIndicator || isTextIndicator) {
+                  const hasExistingA11y =
+                    attribs["role"] !== undefined ||
+                    attribs["aria-live"] !== undefined ||
+                    attribs["aria-busy"] !== undefined;
+
+                  if (!hasExistingA11y) {
+                    $(node).attr("role", "status");
+                    const hasScreenReaderAttr =
+                      attribs["aria-label"] !== undefined ||
+                      attribs["aria-labelledby"] !== undefined ||
+                      attribs["title"] !== undefined;
+                    if (!hasScreenReaderAttr) {
+                      const text = getNodeText(node).trim();
+                      if (!text) {
+                        $(node).attr("aria-label", "Loading");
+                      }
+                    }
+                  }
+                }
+              }
+
+              if ((node as any).children) {
+                for (const child of (node as any).children) {
+                  traverseAst(child);
+                }
+              }
+            } else if (node.type === "root" && (node as any).children) {
+              for (const child of (node as any).children) {
+                traverseAst(child);
+              }
+            }
+          };
+          traverseAst(rootNode);
+        }
+
         const assetTasks: (() => Promise<void>)[] = [];
 
         // OPTIMIZATION: Combine the image loops to perform both alt attribution and asset task collection
@@ -327,7 +449,10 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
             getEl().attr("aria-label", title);
             ariaLabel = title;
           } else if (!title && !ariaLabel) {
-            const svgTitle = getEl().find("svg title").first().text().trim();
+            // OPTIMIZATION: Use the high-performance raw AST findSvgTitle instead of Cheerio's
+            // slow document-wide `.find("svg title").first().text().trim()` lookups to prevent
+            // jQuery/Cheerio wrapper instantiation and unnecessary DOM traversals.
+            const svgTitle = findSvgTitle(el);
             if (svgTitle) {
               getEl().attr("aria-label", svgTitle);
               ariaLabel = svgTitle;
@@ -695,6 +820,49 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
             }
           }
 
+          // 3f. Map Visual Form Field Error States to Semantic aria-invalid="true"
+          const hasAriaInvalid = attribs["aria-invalid"] !== undefined;
+          if (!hasAriaInvalid) {
+            let isInvalid = false;
+
+            // Check if input itself has error/invalid class, ignoring Tailwind modifiers
+            const classStr = attribs["class"] || "";
+            if (classStr) {
+              const classes = classStr.split(/\s+/);
+              for (const cls of classes) {
+                if (cls && !cls.includes(":")) {
+                  if (ERROR_CLASS_PATTERN.test(cls)) {
+                    isInvalid = true;
+                    break;
+                  }
+                }
+              }
+            }
+
+            // Check if connected aria-describedby element indicates an error
+            const currentDescribedBy = $(el).attr("aria-describedby") || ariaDescribedByAttr;
+            if (!isInvalid && currentDescribedBy) {
+              const descEl = $(`#${currentDescribedBy}`);
+              if (descEl.length > 0) {
+                const descClass = descEl.attr("class") || "";
+                const descId = descEl.attr("id") || "";
+                const descText = descEl.text().toLowerCase();
+                if (
+                  ERROR_CLASS_PATTERN.test(descClass) ||
+                  ERROR_CLASS_PATTERN.test(descId) ||
+                  descText.includes("error") ||
+                  descText.includes("invalid")
+                ) {
+                  isInvalid = true;
+                }
+              }
+            }
+
+            if (isInvalid) {
+              $(el).attr("aria-invalid", "true");
+            }
+          }
+
           // 3b. Map Visual Required Indicators to Semantic aria-required="true"
           const hasRequiredAttr = requiredAttr !== undefined;
           const hasAriaRequiredAttr = ariaRequiredAttr !== undefined;
@@ -736,11 +904,94 @@ export class DownloadAssetsHandler implements DownloadAssetsSpec {
           // allocations/queries per form control element, boosting performance and reducing memory churn.
         });
 
+        // Loading Indicator Accessibility: Elevate visual loading indicators to accessible regions
+        $("div, span, p, button").each((_, el) => {
+          const attribs = (el as any).attribs || {};
+
+          if (
+            attribs["role"] !== undefined ||
+            attribs["aria-live"] !== undefined ||
+            attribs["aria-busy"] !== undefined
+          ) {
+            return;
+          }
+
+          const classStr = attribs["class"] || "";
+          const idStr = attribs["id"] || "";
+
+          const hasLoadingClassOrId =
+            (LOADING_CLASS_ID_PATTERN.test(classStr) ||
+              LOADING_CLASS_ID_PATTERN.test(idStr)) &&
+            !LOADING_FALSE_POSITIVE_PATTERN.test(classStr) &&
+            !LOADING_FALSE_POSITIVE_PATTERN.test(idStr);
+
+          const text = $(el).text();
+          const hasLoadingText = LOADING_TEXT_PATTERN.test(text);
+
+          if (hasLoadingClassOrId || hasLoadingText) {
+            if ($(el).children().length > 0) {
+              return;
+            }
+
+            $(el).attr("role", "status");
+
+            if (
+              !text.trim() &&
+              attribs["aria-label"] === undefined &&
+              attribs["title"] === undefined
+            ) {
+              $(el).attr("aria-label", "Loading");
+            }
+          }
+        });
+
         // 4. Document Language Accessibility: Ensure the <html> element has a lang attribute (defaults to "en").
         const htmlEl = $("html");
         if (htmlEl.length > 0 && !htmlEl.attr("lang")) {
           htmlEl.attr("lang", "en");
         }
+
+        // 4b. Visual Loading and Status Indicators Accessibility Post-processing
+        $("*").each((_, el) => {
+          const tag = (el as any).name;
+          if (!tag || /^(html|body|head|script|style|meta|link)$/.test(tag))
+            return;
+          const attribs = (el as any).attribs || {};
+          const cls = attribs["class"] || "",
+            id = attribs["id"] || "";
+          let hasChildren = false;
+          for (const c of (el as any).children || [])
+            if (c.type === "tag") {
+              hasChildren = true;
+              break;
+            }
+          const text = hasChildren ? "" : $(el).text();
+          if (
+            !STATUS_CLASS_PATTERN.test(cls + " " + id) &&
+            !STATUS_TEXT_PATTERN.test(text)
+          )
+            return;
+          const fullText = hasChildren ? $(el).text() : text;
+          if (
+            LOADING_FALSE_POSITIVE_PATTERN.test(cls + " " + id + " " + fullText)
+          )
+            return;
+          if (
+            attribs["role"] === undefined &&
+            attribs["aria-live"] === undefined &&
+            attribs["aria-busy"] === undefined
+          ) {
+            $(el).attr("role", "status");
+          }
+          if (
+            fullText.trim() === "" &&
+            attribs["aria-label"] === undefined &&
+            attribs["title"] === undefined &&
+            attribs["aria-labelledby"] === undefined
+          ) {
+            $(el).attr("aria-label", "Loading");
+          }
+        });
 
         // 8. Iframe Title Accessibility: Ensure all <iframe> elements have a descriptive, non-empty title attribute.
         // If they lack a title, try to derive one from src, id, or name attributes, and fallback to 'Embedded content'.
